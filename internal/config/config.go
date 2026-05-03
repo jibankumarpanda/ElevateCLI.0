@@ -22,7 +22,13 @@ type Config struct {
 		Mode string `mapstructure:"mode"` // process, firecracker, docker
 	} `mapstructure:"sandbox"`
 	Policy struct {
-		File string `mapstructure:"file"`
+		File  string `mapstructure:"file"`
+		Rules struct {
+			BlockedImports         []string `mapstructure:"blocked_imports"`
+			BlockedFunctions       []string `mapstructure:"blocked_functions"`
+			RequireErrorHandling   bool     `mapstructure:"require_error_handling"`
+			MaxCyclomaticComplexity int     `mapstructure:"max_cyclomatic_complexity"`
+		} `mapstructure:"rules"`
 	} `mapstructure:"policy"`
 }
 
