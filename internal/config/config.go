@@ -41,10 +41,10 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("ai.endpoint", "http://localhost:11434")
 	v.SetDefault("database.path", "secure-ai.db")
 	v.SetDefault("sandbox.mode", "process")
-	v.SetDefault("policy.file", ".secure-ai.yaml")
+	v.SetDefault("policy.file", ".elevated-cli.yaml")
 
 	// Config file locations
-	v.SetConfigName(".secure-ai")
+	v.SetConfigName(".elevated-cli")
 	v.SetConfigType("yaml")
 	v.AddConfigPath(".") // Project level
 

@@ -1,9 +1,9 @@
-# Secure AI Developer CLI (`secure-ai`)
+# ElevatedCLI (`elevated-cli`)
 
 [![Go Version](https://img.shields.io/badge/go-1.22%2B-blue.svg)](https://golang.org)
 [![Security Scale](https://img.shields.io/badge/security-0--100-green.svg)](#security-scoring)
 
-`secure-ai` is a production-grade, security-first command-line tool designed for developers who want to leverage AI code generation without introducing vulnerabilities. Every piece of code generated is passed through a multi-stage security verification pipeline.
+`elevated-cli` is a production-grade, security-first command-line tool designed for developers who want to leverage AI code generation without introducing vulnerabilities. Every piece of code generated is passed through a multi-stage security verification pipeline.
 
 ---
 
@@ -57,7 +57,7 @@
 
 ## ⚙️ Configuration
 
-Create a `.secure-ai.yaml` in your project root or home directory:
+Create a `.elevated-cli.yaml` in your project root or home directory:
 
 ```yaml
 ai:
@@ -82,17 +82,17 @@ policy:
 ### Generate Code
 Generate code from a natural language prompt and run it through the security pipeline:
 ```bash
-go run cmd/secure-ai-cli/main.go generate --prompt "Create a Go function to read a file securely" --lang go --run
+go run cmd/elevated-cli/main.go generate --prompt "Create a Go function to read a file securely" --lang go --run
 ```
 
 ### Audit Existing Code
 ```bash
-go run cmd/secure-ai-cli/main.go audit --file path/to/file.go
+go run cmd/elevated-cli/main.go audit --file path/to/file.go
 ```
 
 ### View History
 ```bash
-go run cmd/secure-ai-cli/main.go history --last 5
+go run cmd/elevated-cli/main.go history --last 5
 ```
 
 ---
