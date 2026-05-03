@@ -8,6 +8,11 @@ import (
 
 	"github.com/jibankumarpanda/ElevateCLI.0/internal/ai"
 	"github.com/jibankumarpanda/ElevateCLI.0/internal/config"
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/database"
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/output"
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/sandbox"
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/verification"
+	"github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
 	"github.com/spf13/cobra"
 )
 
@@ -74,7 +79,39 @@ func generateCmd() *cobra.Command {
 			fmt.Println("--- Generated Code ---")
 			fmt.Println(code)
 			fmt.Println("----------------------")
-			fmt.Println("Phase 2-4 (Verification & Sandbox) not yet implemented.")
+
+			// Phase 2: Verification Pipeline
+			orchestrator := verification.NewPipelineOrchestrator(cfg)
+			findings, vulns, policies, err := orchestrator.RunParallel(context.Background(), code, lang)
+			if err != nil {
+				log.Fatalf("Verification pipeline failed: %v", err)
+			}
+
+			// Phase 3: Sandbox Execution
+			var sbResult security.SandboxResult
+			if run {
+				limits := sandbox.DefaultLimits()
+				runner := sandbox.NewProcessRunner(limits)
+				sbResult, err = runner.Run(context.Background(), code, lang)
+				if err != nil {
+					log.Printf("Sandbox execution error: %v", err)
+				}
+			}
+
+			// Phase 4: Scoring, Reporting, and Database
+			reporter := output.NewReporter()
+			report := reporter.CreateReport(prompt, code, lang, findings, vulns, policies, sbResult)
+
+			db, err := database.NewSQLiteDB(cfg.Database.Path)
+			if err == nil {
+				db.SaveReport(report)
+			}
+
+			// Show TUI result
+			p := output.NewUI(report)
+			if _, err := p.Run(); err != nil {
+				log.Fatalf("TUI error: %v", err)
+			}
 		},
 	}
 
