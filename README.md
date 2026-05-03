@@ -7,7 +7,7 @@
 
 ---
 
-## 🚀 Key Features
+##  Key Features
 
 *   **Multi-Model Support**: Connects to OpenAI (GPT-4o), Anthropic, or local Ollama models.
 *   **4-Stage Verification Pipeline**:
@@ -20,7 +20,7 @@
 
 ---
 
-## 🛠 Tech Stack
+##  Tech Stack
 
 - **Core**: Go 1.22+
 - **CLI Framework**: Cobra & Viper
@@ -32,7 +32,7 @@
 
 ---
 
-## 📦 Installation
+##  Installation
 
 1.  **Clone the Repository**:
     ```bash
@@ -55,7 +55,7 @@
 
 ---
 
-## ⚙️ Configuration
+##  Configuration
 
 Create a `.elevated-cli.yaml` in your project root or home directory:
 
@@ -77,7 +77,7 @@ policy:
 
 ---
 
-## 📖 Usage
+##  Usage
 
 ### Generate Code
 Generate code from a natural language prompt and run it through the security pipeline:
@@ -106,11 +106,11 @@ The final score (0–100) is calculated as follows:
 *   **Sandbox (10%)**: Deductions for runtime errors or suspicious behavior.
 
 **Verdict Thresholds:**
-- ✅ **APPROVED** (70+): Safe to integrate.
-- ⚠️ **WARNING** (40–69): Review findings before use.
-- ❌ **REJECTED** (<40): Do not use; critical security risks.
+-  **APPROVED** (70+): Safe to integrate.
+-  **WARNING** (40–69): Review findings before use.
+-  **REJECTED** (<40): Do not use; critical security risks.
 
 ---
 
-## 📜 License
+##  License
 MIT License. See `LICENSE` for details.
