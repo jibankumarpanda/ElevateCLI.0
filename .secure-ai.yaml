@@ -1,38 +1,26 @@
 ai:
-  provider: openai          # options: openai | anthropic | local
+  provider: openai
   model: gpt-4o
-  api_key: ${OPENAI_API_KEY}
-  local_url: http://localhost:11434/api/generate   # Ollama endpoint
+  api_key: ""
+  endpoint: http://localhost:11434
+
+database:
+  path: secure-ai.db
 
 sandbox:
-  mode: process             # options: firecracker | docker | process
-  timeout_secs: 30
-  max_memory_mb: 256
-  max_cpu_percent: 50
-  block_network: true
+  mode: process
 
 policy:
-  blocked_imports:
-    - os/exec
-    - syscall
-    - unsafe
-    - net/http
-  blocked_functions:
-    - eval
-    - exec
-    - system
-  require_error_handling: true
-  max_cyclomatic_complexity: 15
-
-scoring:
-  sast_weight: 0.40
-  dep_weight: 0.30
-  policy_weight: 0.20
-  sandbox_weight: 0.10
-  passing_threshold: 70     # score >= 70 = approved
-
-output:
-  format: rich              # options: rich | json | sarif | plain
-  show_code: true
-  audit_db: ~/.secure-ai/audit.db
-  log_file: ~/.secure-ai/cli.log
+  file: .secure-ai.yaml
+  rules:
+    blocked_imports:
+      - os/exec
+      - syscall
+      - unsafe
+      - net/http
+    blocked_functions:
+      - eval
+      - exec
+      - system
+    require_error_handling: true
+    max_cyclomatic_complexity: 15
