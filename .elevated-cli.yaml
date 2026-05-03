@@ -1,0 +1,26 @@
+ai:
+  provider: openai
+  model: gpt-4o
+  api_key: ""
+  endpoint: http://localhost:11434
+
+database:
+  path: elevated-cli.db
+
+sandbox:
+  mode: process
+
+policy:
+  file: .elevated-cli.yaml
+  rules:
+    blocked_imports:
+      - os/exec
+      - syscall
+      - unsafe
+      - net/http
+    blocked_functions:
+      - eval
+      - exec
+      - system
+    require_error_handling: true
+    max_cyclomatic_complexity: 15
