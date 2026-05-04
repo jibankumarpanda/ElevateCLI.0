@@ -1,3 +1,4 @@
+ # Main CI/CD pipeline
 name: CI
 
 on:
