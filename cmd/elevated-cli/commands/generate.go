@@ -10,7 +10,7 @@ import (
 
 	"github.com/jibankumarpanda/elevated-cli/internal/ai"
 	"github.com/jibankumarpanda/elevated-cli/internal/logger"
-	sec "github.com/yourusername/elevated-cli/pkg/security"
+	sec "github.com/jibankumarpanda/elevated-cli/pkg/security"
 	"go.uber.org/zap"
 )
 
