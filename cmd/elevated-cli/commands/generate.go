@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/yourusername/elevated-cli/internal/ai"
+	"github.com/jibankumarpanda/elevated-cli/internal/ai"
 	"github.com/yourusername/elevated-cli/internal/logger"
 	sec "github.com/yourusername/elevated-cli/pkg/security"
 	"go.uber.org/zap"
