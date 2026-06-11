@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"time"
 
 	"github.com/sashabaranov/go-openai"
 )
