@@ -39,27 +39,35 @@ func New(cfg config.AIConfig) (Client, error) {
 }
 
 // OpenAIClient implements LLMClient for OpenAI.
-type OpenAIClient struct {
+type openAIClient struct {
 	client *openai.Client
 	model  string
 }
 
-func NewOpenAIClient(apiKey, model string) *OpenAIClient {
-	return &OpenAIClient{
-		client: openai.NewClient(apiKey),
-		model:  model,
+func newOpenAIClient(cfg config.AIConfig) (*openAIClient, error) {
+	if cfg.APIKey == "" {
+		return nil, &sec.AIProviderError{
+			Provider: "openai",
+			Message:  "api_key is empty — set OPENAI_API_KEY environment variable",
+		}
 	}
+	return &openAIClient{
+		client: openai.NewClient(cfg.APIKey),
+		model:  cfg.Model,
+	}, nil
 }
 
-func (c *OpenAIClient) GenerateCode(ctx context.Context, prompt string, lang string) (string, error) {
-	resp, err := c.client.CreateChatCompletion(
-		ctx,
+func (c *openAIClient) Generate(ctx context.Context, prompt string) (string, error) {
+	log := logger.WithStage("ai-openai")
+	log.Info("calling OpenAI API")
+
+	resp, err := c.client.CreateChatCompletion(ctx,
 		openai.ChatCompletionRequest{
 			Model: c.model,
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role:    openai.ChatMessageRoleSystem,
-					Content: fmt.Sprintf("You are a secure-coding expert. Generate only the raw %s code with no explanations or markdown backticks.", lang),
+					Content: systemPrompt(),
 				},
 				{
 					Role:    openai.ChatMessageRoleUser,
@@ -68,15 +76,12 @@ func (c *OpenAIClient) GenerateCode(ctx context.Context, prompt string, lang str
 			},
 		},
 	)
-
 	if err != nil {
-		return "", fmt.Errorf("openai error: %w", err)
+		return "", &sec.AIProviderError{Provider: "openai", Message: "API call failed", Err: err}
 	}
-
 	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("no response from openai")
+		return "", &sec.AIProviderError{Provider: "openai", Message: "empty response from API"}
 	}
-
 	return resp.Choices[0].Message.Content, nil
 }
 
