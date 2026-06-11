@@ -84,6 +84,90 @@ func (c *openAIClient) Generate(ctx context.Context, prompt string) (string, err
 	}
 	return resp.Choices[0].Message.Content, nil
 }
+//Anthropic (Claude)
+type anthropicClient struct {
+	apiKey  string
+	model   string
+	baseURL string
+	http    *http.Client
+}
+
+func newAnthropicClient(cfg config.AIConfig) (*anthropicClient, error) {
+	if cfg.APIKey == "" {
+		return nil, &sec.AIProviderError{
+			Provider: "anthropic",
+			Message:  "api_key is empty — set ANTHROPIC_API_KEY environment variable",
+		}
+	}
+	return &anthropicClient{
+		apiKey:  cfg.APIKey,
+		model:   cfg.Model,
+		baseURL: "https://api.anthropic.com/v1/messages",
+		http:    &http.Client{Timeout: time.Duration(cfg.TimeoutSec) * time.Second},
+	}, nil
+}
+
+func (c *anthropicClient) Generate(ctx context.Context, prompt string) (string, error) {
+	log := logger.WithStage("ai-anthropic")
+	log.Info("calling Anthropic API")
+
+	body := map[string]any{
+		"model":      c.model,
+		"max_tokens": 4096,
+		"system":     systemPrompt(),
+		"messages": []map[string]string{
+			{"role": "user", "content": prompt},
+		},
+	}
+
+	b, err := json.Marshal(body)
+	if err != nil {
+		return "", fmt.Errorf("marshalling request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL, bytes.NewReader(b))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", c.apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", &sec.AIProviderError{Provider: "anthropic", Message: "HTTP request failed", Err: err}
+	}
+	defer resp.Body.Close()
+
+	rawBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("reading response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", &sec.AIProviderError{
+			Provider: "anthropic",
+			Message:  fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(rawBody)),
+		}
+	}
+
+	var result struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(rawBody, &result); err != nil {
+		return "", fmt.Errorf("parsing response: %w", err)
+	}
+	if len(result.Content) == 0 {
+		return "", &sec.AIProviderError{Provider: "anthropic", Message: "empty content in response"}
+	}
+	return result.Content[0].Text, nil
+}
+
+func (c *anthropicClient) Provider() string { return "anthropic" }
+func (c *anthropicClient) Model() string    { return c.model }
 
 // OllamaClient implements LLMClient for local Ollama models.
 type OllamaClient struct {
