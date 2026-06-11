@@ -15,6 +15,8 @@ import (
 // LLMClient defines the interface for interacting with different AI providers.
 type LLMClient interface {
 	GenerateCode(ctx context.Context, prompt string, lang string) (string, error)
+	Provider() string
+	Model() string
 }
 
 // OpenAIClient implements LLMClient for OpenAI.
