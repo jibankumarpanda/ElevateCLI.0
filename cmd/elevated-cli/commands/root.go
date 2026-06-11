@@ -8,8 +8,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/yourusername/elevated-cli/internal/config"
-	"github.com/yourusername/elevated-cli/internal/logger"
+	"github.com/jibankumarpanda/elevated-cli/internal/config"
+	"github.com/jibankumarpanda/elevated-cli/internal/logger"
 )
 
 var (
