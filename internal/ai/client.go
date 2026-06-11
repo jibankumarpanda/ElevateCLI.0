@@ -19,6 +19,25 @@ type LLMClient interface {
 	Model() string
 }
 
+//Factory
+
+// New returns the correct Client implementation based on config.
+func New(cfg config.AIConfig) (Client, error) {
+	switch cfg.Provider {
+	case "openai":
+		return newOpenAIClient(cfg)
+	case "anthropic":
+		return newAnthropicClient(cfg)
+	case "local":
+		return newOllamaClient(cfg)
+	default:
+		return nil, &sec.AIProviderError{
+			Provider: cfg.Provider,
+			Message:  "unknown provider — must be openai, anthropic, or local",
+		}
+	}
+}
+
 // OpenAIClient implements LLMClient for OpenAI.
 type OpenAIClient struct {
 	client *openai.Client
