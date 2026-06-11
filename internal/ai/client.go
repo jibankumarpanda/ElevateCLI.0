@@ -170,57 +170,72 @@ func (c *anthropicClient) Provider() string { return "anthropic" }
 func (c *anthropicClient) Model() string    { return c.model }
 
 // OllamaClient implements LLMClient for local Ollama models.
-type OllamaClient struct {
-	endpoint string
-	model    string
-	client   *http.Client
+type ollamaClient struct {
+	baseURL string
+	model   string
+	http    *http.Client
 }
 
-func NewOllamaClient(endpoint, model string) *OllamaClient {
-	return &OllamaClient{
-		endpoint: endpoint,
-		model:    model,
-		client:   &http.Client{},
+func newOllamaClient(cfg config.AIConfig) (*ollamaClient, error) {
+	url := cfg.LocalURL
+	if url == "" {
+		url = "http://localhost:11434/api/generate"
 	}
+	return &ollamaClient{
+		baseURL: url,
+		model:   cfg.Model,
+		http:    &http.Client{Timeout: time.Duration(cfg.TimeoutSec) * time.Second},
+	}, nil
 }
 
-func (c *OllamaClient) GenerateCode(ctx context.Context, prompt string, lang string) (string, error) {
-	url := fmt.Sprintf("%s/api/generate", c.endpoint)
+func (c *ollamaClient) Generate(ctx context.Context, prompt string) (string, error) {
+	log := logger.WithStage("ai-ollama")
+	log.Info("calling local Ollama API")
 
-	payload := map[string]interface{}{
+	body := map[string]any{
 		"model":  c.model,
-		"prompt": fmt.Sprintf("You are a secure-coding expert. Generate only the raw %s code for: %s", lang, prompt),
+		"prompt": systemPrompt() + "\n\n" + prompt,
 		"stream": false,
-		"system": fmt.Sprintf("Generate only the raw %s code with no explanations or markdown backticks.", lang),
 	}
 
-	jsonData, err := json.Marshal(payload)
+	b, err := json.Marshal(body)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("marshalling request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL, bytes.NewReader(b))
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.client.Do(req)
+	resp, err := c.http.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("ollama request failed: %w", err)
+		return "", &sec.AIProviderError{Provider: "local", Message: "Ollama unreachable", Err: err}
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("ollama returned status: %d", resp.StatusCode)
-	}
 
 	var result struct {
 		Response string `json:"response"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("failed to decode ollama response: %w", err)
+		return "", fmt.Errorf("parsing Ollama response: %w", err)
 	}
-
 	return result.Response, nil
+}
+
+func (c *ollamaClient) Provider() string { return "local" }
+func (c *ollamaClient) Model() string    { return c.model }
+
+// ─── System prompt ────────────────────────────────────────────────────────────
+
+// systemPrompt returns the instruction every LLM receives before the user prompt.
+// It ensures code is returned in a parseable format.
+func systemPrompt() string {
+	return `You are a senior software engineer. When asked to write code:
+1. Return ONLY the code inside a single markdown code block (` + "```" + `language ... ` + "```" + `).
+2. Do NOT include explanations, commentary, or multiple code blocks.
+3. Write clean, idiomatic code with proper error handling.
+4. Never include hardcoded credentials, API keys, or passwords.
+5. Prefer standard library functions over third-party dependencies where possible.`
 }
