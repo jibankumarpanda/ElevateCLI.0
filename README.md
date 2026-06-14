@@ -1,3 +1,4 @@
+Made for devlopers 
 # ElevatedCLI (`elevated-cli`)
 
 [![Go Version](https://img.shields.io/badge/go-1.22%2B-blue.svg)](https://golang.org)
