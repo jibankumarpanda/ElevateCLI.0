@@ -1,4 +1,4 @@
-Made for devlopers 
+Made for devlopers. for the active function 
 # ElevatedCLI (`elevated-cli`)
 
 [![Go Version](https://img.shields.io/badge/go-1.22%2B-blue.svg)](https://golang.org)
