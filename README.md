@@ -1,4 +1,4 @@
-Made for devlopers. for the active function, Cli
+Made for devlopers. for the active function, Cli connect 
 # ElevatedCLI (`elevated-cli`)
 
 [![Go Version](https://img.shields.io/badge/go-1.22%2B-blue.svg)](https://golang.org)
