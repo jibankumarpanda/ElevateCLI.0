@@ -18,7 +18,7 @@ import (
 	"syscall"
 	"time"
 
-	sec "github.com/yourusername/elevated-cli/pkg/security"
+	sec "github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
 )
 
 // ProcessRunner executes code in a restricted child process.
