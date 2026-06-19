@@ -8,7 +8,7 @@ import (
 package scoring
 
 import (
-	"github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/config"
 	sec "github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
 )
 
@@ -119,7 +119,7 @@ func clamp(v int) int {
 	return v
 }
 
-	sec "github.com/yourusername/elevated-cli/pkg/security"
+	sec "github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
 )
 
 // Calculator computes the final security score from pipeline results.
