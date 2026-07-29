@@ -5,11 +5,11 @@ import (
 	"io"
 	"os"
 
-	"github.com/yourusername/elevated-cli/internal/config"
-	"github.com/yourusername/elevated-cli/internal/output"
-	"github.com/yourusername/elevated-cli/internal/sandbox"
-	"github.com/yourusername/elevated-cli/internal/security"
-	sec "github.com/yourusername/elevated-cli/pkg/security"
+	"github.com/jibankumarpanda/ElevateCLI/internal/config"
+	"github.com/jibankumarpanda/ElevateCLI/internal/output"
+	"github.com/jibankumarpanda/ElevateCLI/internal/sandbox"
+	"github.com/jibankumarpanda/ElevateCLI/internal/security"
+	sec "github.com/jibankumarpanda/ElevateCLI/pkg/security"
 )
 
 // buildPipeline wires together all 4 pipeline stages and returns a ready Pipeline.
