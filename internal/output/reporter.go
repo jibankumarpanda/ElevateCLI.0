@@ -1,88 +1,72 @@
+// Package output handles all result formatting and display for ElevatedCLI.
+// reporter.go dispatches a completed Report to the correct formatter
+// based on the configured output format.
 package output
 
 import (
 	"fmt"
-	"time"
+	"io"
+	"os"
 
-	"github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
+	"github.com/jibankumarpanda/ElevateCLI/internal/output/formatters"
+	sec "github.com/jibankumarpanda/ElevateCLI/pkg/security"
 )
 
-type Reporter struct{}
-
-func NewReporter() *Reporter {
-	return &Reporter{}
+// Reporter dispatches a Report to the correct output formatter.
+type Reporter struct {
+	format   string
+	showCode bool
+	out      io.Writer
 }
 
-func (r *Reporter) CreateReport(prompt, code, lang string, findings []security.Finding, vulns []security.Vulnerability, policies []security.Finding, sandbox security.SandboxResult) security.Report {
-	score := r.CalculateScore(findings, vulns, policies, sandbox)
-	
-	verdict := security.VerdictApproved
-	if score < 40 {
-		verdict = security.VerdictRejected
-	} else if score < 70 {
-		verdict = security.VerdictWarning
+// NewReporter creates a Reporter writing to the given writer (usually os.Stdout).
+func NewReporter(format string, showCode bool, out io.Writer) *Reporter {
+	if out == nil {
+		out = os.Stdout
 	}
+	return &Reporter{format: format, showCode: showCode, out: out}
+}
 
-	return security.Report{
-		Prompt:           prompt,
-		GeneratedCode:    code,
-		Language:         lang,
-		Timestamp:        time.Now(),
-		Findings:         findings,
-		Vulnerabilities:  vulns,
-		PolicyViolations: policies,
-		SandboxResult:    sandbox,
-		Score:            score,
-		Verdict:          verdict,
+// Print formats and writes the report to the configured output.
+func (r *Reporter) Print(report *sec.Report) error {
+	switch r.format {
+	case "json":
+		return formatters.PrintJSON(r.out, report)
+	case "sarif":
+		return formatters.PrintSARIF(r.out, report)
+	case "plain":
+		return formatters.PrintPlain(r.out, report, r.showCode)
+	default: // "rich"
+		return formatters.PrintRich(r.out, report, r.showCode)
 	}
 }
 
-func (r *Reporter) CalculateScore(findings []security.Finding, vulns []security.Vulnerability, policies []security.Finding, sandbox security.SandboxResult) int {
-	score := 100
-
-	// Deductions for SAST Findings
-	for _, f := range findings {
-		switch f.Severity {
-		case security.SeverityCritical: score -= 25
-		case security.SeverityHigh:     score -= 15
-		case security.SeverityMedium:   score -= 8
-		case security.SeverityLow:      score -= 3
-		}
-	}
-
-	// Deductions for Vulnerabilities
-	for range vulns {
-		score -= 15
-	}
-
-	// Deductions for Policy Violations
-	for range policies {
-		score -= 20
-	}
-
-	// Deductions for Sandbox Failure
-	if sandbox.ExitCode != 0 || sandbox.Error != "" {
-		score = 0 // Automatic rejection if sandbox fails to run
-	}
-
-	if score < 0 {
-		score = 0
-	}
-
-	return score
+// PrintSummary writes a one-line scan summary (used in history listings).
+func PrintSummary(report *sec.Report) {
+	icon := verdictIcon(report.Verdict)
+	fmt.Printf("%s  [%3d]  %-10s  %-8s  %s\n",
+		icon,
+		report.FinalScore,
+		report.Language,
+		string(report.Verdict),
+		truncate(report.Prompt, 60),
+	)
 }
 
-func (r *Reporter) PrintRich(report security.Report) {
-	fmt.Printf("\n--- SECURITY REPORT ---\n")
-	fmt.Printf("Verdict: %s (Score: %d/100)\n", report.Verdict, report.Score)
-	fmt.Printf("Findings: %d | Vulns: %d | Policy: %d\n", len(report.Findings), len(report.Vulnerabilities), len(report.PolicyViolations))
-	
-	if len(report.Findings) > 0 {
-		fmt.Println("\nSAST Findings:")
-		for _, f := range report.Findings {
-			fmt.Printf("- [%s] %s (Line: %d)\n", f.Severity, f.Title, f.Line)
-		}
+func verdictIcon(v sec.Verdict) string {
+	switch v {
+	case sec.VerdictApproved:
+		return "✓"
+	case sec.VerdictWarning:
+		return "⚠"
+	default:
+		return "✗"
 	}
-	
-	fmt.Println("\n-----------------------\n")
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n-3] + "..."
 }
