@@ -12,8 +12,8 @@ import (
 	"strings"
 
 	"github.com/jibankumarpanda/ElevateCLI/internal/config"
-	"github.com/yourusername/elevated-cli/internal/logger"
-	sec "github.com/yourusername/elevated-cli/pkg/security"
+	"github.com/jibankumarpanda/ElevateCLI/internal/logger"
+	sec "github.com/jibankumarpanda/ElevateCLI/pkg/security"
 	"go.uber.org/zap"
 )
 
