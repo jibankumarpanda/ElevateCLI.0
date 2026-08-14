@@ -9,17 +9,19 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/config"
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/logger"
+	sec "github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
 	"github.com/sashabaranov/go-openai"
 )
 
-// LLMClient defines the interface for interacting with different AI providers.
-type LLMClient interface {
-	GenerateCode(ctx context.Context, prompt string, lang string) (string, error)
+// Client is the interface every AI provider implements.
+type Client interface {
+	// Generate sends the prompt and returns the raw model response.
+	Generate(ctx context.Context, prompt string) (string, error)
 	Provider() string
 	Model() string
 }
-
-//Factory
 
 // New returns the correct Client implementation based on config.
 func New(cfg config.AIConfig) (Client, error) {
@@ -28,7 +30,7 @@ func New(cfg config.AIConfig) (Client, error) {
 		return newOpenAIClient(cfg)
 	case "anthropic":
 		return newAnthropicClient(cfg)
-	case "local":
+	case "local", "ollama":
 		return newOllamaClient(cfg)
 	default:
 		return nil, &sec.AIProviderError{
@@ -84,6 +86,9 @@ func (c *openAIClient) Generate(ctx context.Context, prompt string) (string, err
 	}
 	return resp.Choices[0].Message.Content, nil
 }
+func (c *openAIClient) Provider() string { return "openai" }
+func (c *openAIClient) Model() string    { return c.model }
+
 //Anthropic (Claude)
 type anthropicClient struct {
 	apiKey  string
@@ -177,7 +182,7 @@ type ollamaClient struct {
 }
 
 func newOllamaClient(cfg config.AIConfig) (*ollamaClient, error) {
-	url := cfg.LocalURL
+	url := cfg.Endpoint
 	if url == "" {
 		url = "http://localhost:11434/api/generate"
 	}
