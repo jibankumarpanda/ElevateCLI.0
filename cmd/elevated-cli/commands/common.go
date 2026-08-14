@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -63,7 +64,7 @@ func printReport(report *sec.Report, format string, showCode bool) {
 // Used when --no-sandbox flag is set or sandbox mode is "skip".
 type noopSandbox struct{}
 
-func (n *noopSandbox) Run(_ interface{ Done() <-chan struct{} }, code, language string) (sec.SandboxResult, error) {
+func (n *noopSandbox) Run(_ context.Context, code, language string) (sec.SandboxResult, error) {
 	return sec.SandboxResult{
 		Skipped:    true,
 		SkipReason: "sandbox disabled via --no-sandbox flag or config",

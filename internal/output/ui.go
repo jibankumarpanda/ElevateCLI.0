@@ -45,28 +45,32 @@ func (m model) View() string {
 	b.WriteString(styleTitle.Render("Secure AI Developer CLI - Report") + "\n\n")
 
 	verdictStyle := styleApproved
-	if m.report.Verdict == security.VerdictWarning {
+	switch m.report.Verdict {
+	case security.VerdictWarning:
 		verdictStyle = styleWarning
-	} else if m.report.Verdict == security.VerdictRejected {
+	case security.VerdictRejected,
+		security.VerdictBlocked,
+		security.VerdictAnalysisIncomplete,
+		security.VerdictExecutionFailed:
 		verdictStyle = styleRejected
 	}
 
 	b.WriteString(fmt.Sprintf("Verdict: %s\n", verdictStyle.Render(string(m.report.Verdict))))
-	b.WriteString(fmt.Sprintf("Security Score: %d/100\n\n", m.report.Score))
+	b.WriteString(fmt.Sprintf("Security Score: %d/100\n\n", m.report.FinalScore))
 
 	b.WriteString("Findings:\n")
-	if len(m.report.Findings) == 0 && len(m.report.Vulnerabilities) == 0 && len(m.report.PolicyViolations) == 0 {
+	if len(m.report.Findings) == 0 && len(m.report.Vulns) == 0 && len(m.report.Violations) == 0 {
 		b.WriteString("  No issues found. Clean code!\n")
 	}
 
 	for _, f := range m.report.Findings {
 		b.WriteString(fmt.Sprintf("  [SAST] [%s] %s\n", f.Severity, f.Title))
 	}
-	for _, v := range m.report.Vulnerabilities {
+	for _, v := range m.report.Vulns {
 		b.WriteString(fmt.Sprintf("  [VULN] [%s] %s\n", v.Severity, v.Package))
 	}
-	for _, p := range m.report.PolicyViolations {
-		b.WriteString(fmt.Sprintf("  [POLICY] %s\n", p.Title))
+	for _, p := range m.report.Violations {
+		b.WriteString(fmt.Sprintf("  [POLICY] %s — %s\n", p.Rule, p.Description))
 	}
 
 	b.WriteString("\nPress 'q' to exit.")
