@@ -196,13 +196,13 @@ func runGoAST(code string) ([]sec.Finding, error) {
 	if err != nil {
 		// Syntax error in generated code — report it as a finding
 		return []sec.Finding{{
-			ID:       "ast-syntax-error",
-			RuleID:   "SYNTAX",
-			Title:    "Generated code has syntax errors",
-			Severity: sec.SeverityHigh,
-			Source:   "custom-ast",
+			ID:          "ast-syntax-error",
+			RuleID:      "SYNTAX",
+			Title:       "Generated code has syntax errors",
+			Severity:    sec.SeverityHigh,
+			Source:      "custom-ast",
 			Description: fmt.Sprintf("The AI-generated code contains syntax errors: %v", err),
-			Suggestion: "Regenerate with a more specific prompt.",
+			Suggestion:  "Regenerate with a more specific prompt.",
 		}}, nil
 	}
 
@@ -260,13 +260,13 @@ func looksLikeSecret(s string) bool {
 
 func checkDangerousCall(call string, line int) *sec.Finding {
 	dangerous := map[string]string{
-		"exec.Command":     "Direct command execution detected. Use a sandboxed approach instead.",
-		"os.Remove":        "File deletion detected. Ensure path is validated and deletion is intentional.",
-		"os.RemoveAll":     "Recursive file deletion detected. Highly dangerous if path is user-controlled.",
-		"net.Dial":         "Direct network connection detected. Ensure destination is validated.",
-		"http.Get":         "Outbound HTTP request detected. Validate and whitelist target URLs.",
-		"ioutil.ReadFile":  "File read detected. Validate the file path to prevent directory traversal.",
-		"fmt.Sprintf":      "", // not dangerous on its own — skip
+		"exec.Command":    "Direct command execution detected. Use a sandboxed approach instead.",
+		"os.Remove":       "File deletion detected. Ensure path is validated and deletion is intentional.",
+		"os.RemoveAll":    "Recursive file deletion detected. Highly dangerous if path is user-controlled.",
+		"net.Dial":        "Direct network connection detected. Ensure destination is validated.",
+		"http.Get":        "Outbound HTTP request detected. Validate and whitelist target URLs.",
+		"ioutil.ReadFile": "File read detected. Validate the file path to prevent directory traversal.",
+		"fmt.Sprintf":     "", // not dangerous on its own — skip
 	}
 	msg, exists := dangerous[call]
 	if !exists || msg == "" {

@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	styleTitle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
+	styleTitle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
 	styleApproved = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42"))
 	styleWarning  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214"))
 	styleRejected = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196"))

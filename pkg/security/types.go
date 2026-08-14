@@ -83,16 +83,16 @@ type Finding struct {
 	File        string   `json:"file"`
 	Line        int      `json:"line"`
 	Column      int      `json:"column"`
-	Code        string   `json:"code"`        // snippet of offending code
-	Suggestion  string   `json:"suggestion"`  // how to fix it
-	Source      string   `json:"source"`      // "gosec" | "semgrep" | "custom-ast"
+	Code        string   `json:"code"`       // snippet of offending code
+	Suggestion  string   `json:"suggestion"` // how to fix it
+	Source      string   `json:"source"`     // "gosec" | "semgrep" | "custom-ast"
 }
 
 // ─── Vulnerability (dependency audit result) ─────────────────────────────────
 
 // Vulnerability represents a known CVE in a dependency.
 type Vulnerability struct {
-	ID           string   `json:"id"`            // e.g. "CVE-2024-12345"
+	ID           string   `json:"id"` // e.g. "CVE-2024-12345"
 	Package      string   `json:"package"`
 	Version      string   `json:"version"`
 	FixedVersion string   `json:"fixed_version"` // empty if no fix yet
@@ -145,12 +145,12 @@ type StageScores struct {
 
 // Report is the complete result of the 4-stage pipeline for one piece of code.
 type Report struct {
-	ID            string            `json:"id"`             // UUID
+	ID            string            `json:"id"` // UUID
 	Timestamp     time.Time         `json:"timestamp"`
 	Prompt        string            `json:"prompt"`
 	Language      string            `json:"language"`
 	GeneratedCode string            `json:"generated_code"`
-	CodeHash      string            `json:"code_hash"`      // SHA-256, never store raw keys
+	CodeHash      string            `json:"code_hash"` // SHA-256, never store raw keys
 	Findings      []Finding         `json:"findings"`
 	Vulns         []Vulnerability   `json:"vulnerabilities"`
 	Violations    []PolicyViolation `json:"policy_violations"`

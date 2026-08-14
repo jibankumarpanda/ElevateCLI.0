@@ -91,7 +91,7 @@ type sarifLog struct {
 }
 
 type sarifRun struct {
-	Tool    sarifTool    `json:"tool"`
+	Tool    sarifTool     `json:"tool"`
 	Results []sarifResult `json:"results"`
 }
 
@@ -159,8 +159,8 @@ func PrintSARIF(w io.Writer, r *sec.Report) error {
 			rulesSeen[f.RuleID] = true
 		}
 		results = append(results, sarifResult{
-			RuleID: f.RuleID,
-			Level:  sarifLevel(f.Severity),
+			RuleID:  f.RuleID,
+			Level:   sarifLevel(f.Severity),
 			Message: sarifMessage{Text: fmt.Sprintf("%s. %s", f.Description, f.Suggestion)},
 			Locations: []sarifLocation{{
 				PhysicalLocation: sarifPhysicalLocation{

@@ -14,16 +14,16 @@ import (
 // ─── Colors ──────────────────────────────────────────────────────────────────
 
 var (
-	bold       = color.New(color.Bold)
-	green      = color.New(color.FgGreen, color.Bold)
-	yellow     = color.New(color.FgYellow, color.Bold)
-	red        = color.New(color.FgRed, color.Bold)
-	cyan       = color.New(color.FgCyan)
-	white      = color.New(color.FgWhite)
-	gray       = color.New(color.FgHiBlack)
-	bgGreen    = color.New(color.BgGreen, color.FgBlack, color.Bold)
-	bgYellow   = color.New(color.BgYellow, color.FgBlack, color.Bold)
-	bgRed      = color.New(color.BgRed, color.FgWhite, color.Bold)
+	bold     = color.New(color.Bold)
+	green    = color.New(color.FgGreen, color.Bold)
+	yellow   = color.New(color.FgYellow, color.Bold)
+	red      = color.New(color.FgRed, color.Bold)
+	cyan     = color.New(color.FgCyan)
+	white    = color.New(color.FgWhite)
+	gray     = color.New(color.FgHiBlack)
+	bgGreen  = color.New(color.BgGreen, color.FgBlack, color.Bold)
+	bgYellow = color.New(color.BgYellow, color.FgBlack, color.Bold)
+	bgRed    = color.New(color.BgRed, color.FgWhite, color.Bold)
 )
 
 // PrintRich writes a fully formatted, color-coded report to w.

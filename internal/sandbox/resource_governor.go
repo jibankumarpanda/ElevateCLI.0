@@ -4,10 +4,10 @@ import "time"
 
 // ResourceLimits defines the constraints for the sandbox environment.
 type ResourceLimits struct {
-	MemoryMB   int
-	CPUPerc    int
-	Timeout    time.Duration
-	AllowNet   bool
+	MemoryMB int
+	CPUPerc  int
+	Timeout  time.Duration
+	AllowNet bool
 }
 
 func DefaultLimits() ResourceLimits {

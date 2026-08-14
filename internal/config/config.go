@@ -23,7 +23,7 @@ type AIConfig struct {
 	Provider   string `mapstructure:"provider"` // openai | anthropic | local
 	Model      string `mapstructure:"model"`
 	APIKey     string `mapstructure:"api_key"`
-	Endpoint   string `mapstructure:"endpoint"`   // For Ollama/local providers
+	Endpoint   string `mapstructure:"endpoint"`    // For Ollama/local providers
 	TimeoutSec int    `mapstructure:"timeout_sec"` // LLM call timeout in seconds
 }
 
@@ -34,22 +34,22 @@ type DatabaseConfig struct {
 
 // SandboxConfig controls how generated code is executed in isolation.
 type SandboxConfig struct {
-	Mode          string `mapstructure:"mode"` // process | firecracker | docker | skip
-	TimeoutSec    int    `mapstructure:"timeout_sec"`
-	MaxMemoryMB   int    `mapstructure:"max_memory_mb"`
-	BlockNetwork  bool   `mapstructure:"block_network"`
+	Mode         string `mapstructure:"mode"` // process | firecracker | docker | skip
+	TimeoutSec   int    `mapstructure:"timeout_sec"`
+	MaxMemoryMB  int    `mapstructure:"max_memory_mb"`
+	BlockNetwork bool   `mapstructure:"block_network"`
 }
 
 // OutputConfig controls how scan results are displayed and stored.
 type OutputConfig struct {
-	Format  string `mapstructure:"format"` // rich | json | sarif | plain
-	ShowCode bool  `mapstructure:"show_code"`
-	AuditDB string `mapstructure:"audit_db"` // SQLite path for scan history
+	Format   string `mapstructure:"format"` // rich | json | sarif | plain
+	ShowCode bool   `mapstructure:"show_code"`
+	AuditDB  string `mapstructure:"audit_db"` // SQLite path for scan history
 }
 
 // LoggerConfig mirrors the logger package's config for structured logging.
 type LoggerConfig struct {
-	Level      string `mapstructure:"level"` // debug | info | warn | error
+	Level      string `mapstructure:"level"`  // debug | info | warn | error
 	Format     string `mapstructure:"format"` // json | console
 	File       string `mapstructure:"file"`
 	MaxSizeMB  int    `mapstructure:"max_size_mb"`

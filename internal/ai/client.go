@@ -89,7 +89,7 @@ func (c *openAIClient) Generate(ctx context.Context, prompt string) (string, err
 func (c *openAIClient) Provider() string { return "openai" }
 func (c *openAIClient) Model() string    { return c.model }
 
-//Anthropic (Claude)
+// Anthropic (Claude)
 type anthropicClient struct {
 	apiKey  string
 	model   string
