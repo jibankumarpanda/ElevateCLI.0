@@ -36,12 +36,39 @@ func (s Severity) SeverityScore() int {
 // ─── Verdict ────────────────────────────────────────────────────────────────
 
 // Verdict is the final decision on a piece of generated code.
+//
+// The verdict is the authoritative decision point of the pipeline. It is
+// deterministic: identical inputs always produce the identical verdict.
+// Verdicts are ordered by strictness for callers that need to compare them.
 type Verdict string
 
 const (
-	VerdictApproved Verdict = "APPROVED" // score >= 70
-	VerdictWarning  Verdict = "WARNING"  // score 40–69
-	VerdictRejected Verdict = "REJECTED" // score < 40  or sandbox fail
+	// VerdictApproved means no blocking issues and a score at or above the
+	// configured passing threshold.
+	VerdictApproved Verdict = "APPROVED"
+
+	// VerdictWarning means the score is below the passing threshold but not
+	// critically low, or that analysis could not fully complete in fail-open
+	// mode. The code should be reviewed before use.
+	VerdictWarning Verdict = "WARNING"
+
+	// VerdictRejected means the score is too low to be used.
+	VerdictRejected Verdict = "REJECTED"
+
+	// VerdictBlocked means a critical finding or critical vulnerability is
+	// present. Blocked is a hard stop: it overrides the numeric score.
+	VerdictBlocked Verdict = "BLOCKED"
+
+	// VerdictAnalysisIncomplete means one or more mandatory security checks
+	// could not be completed (e.g. a scanner binary is missing or a stage
+	// errored) while fail-closed mode is enabled. It is a hard stop: a result
+	// from incomplete analysis must never be treated as safe.
+	VerdictAnalysisIncomplete Verdict = "ANALYSIS_INCOMPLETE"
+
+	// VerdictExecutionFailed means the sandbox attempted to execute the code
+	// and the execution failed (non-zero exit, timeout, or resource limit).
+	// It is a hard stop regardless of the static score.
+	VerdictExecutionFailed Verdict = "EXECUTION_FAILED"
 )
 
 // ─── Finding (SAST result) ───────────────────────────────────────────────────
@@ -129,11 +156,16 @@ type Report struct {
 	Violations    []PolicyViolation `json:"policy_violations"`
 	Sandbox       SandboxResult     `json:"sandbox"`
 	StageScores   StageScores       `json:"stage_scores"`
-	FinalScore    int               `json:"final_score"`    // 0–100
+	FinalScore    int               `json:"final_score"` // 0–100
 	Verdict       Verdict           `json:"verdict"`
-	Duration      time.Duration     `json:"total_duration"`
-	AIProvider    string            `json:"ai_provider"`
-	AIModel       string            `json:"ai_model"`
+	// AnalysisComplete is false when a mandatory check could not run (missing
+	// scanner binary, stage error, sandbox setup failure). In fail-closed mode
+	// this forces VerdictAnalysisIncomplete so a partial result is never
+	// presented as safe.
+	AnalysisComplete bool          `json:"analysis_complete"`
+	Duration         time.Duration `json:"total_duration"`
+	AIProvider       string        `json:"ai_provider"`
+	AIModel          string        `json:"ai_model"`
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
