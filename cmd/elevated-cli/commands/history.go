@@ -157,7 +157,7 @@ func printConfig() {
 	gray := color.New(color.FgHiBlack)
 	cyan := color.New(color.FgCyan)
 
-	bold.Println("\n  ElevatedCLI — Current Configuration\n")
+	bold.Println("\n  ElevatedCLI — Current Configuration")
 
 	section := func(name string) {
 		gray.Printf("  ── %s\n", name)
