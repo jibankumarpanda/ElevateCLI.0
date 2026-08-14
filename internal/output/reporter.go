@@ -8,8 +8,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/jibankumarpanda/ElevateCLI/internal/output/formatters"
-	sec "github.com/jibankumarpanda/ElevateCLI/pkg/security"
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/output/formatters"
+	sec "github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
 )
 
 // Reporter dispatches a Report to the correct output formatter.
