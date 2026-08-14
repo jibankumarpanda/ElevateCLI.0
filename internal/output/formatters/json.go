@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	sec "github.com/jibankumarpanda/ElevateCLI/pkg/security"
+	sec "github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
 )
 
 // ─── JSON formatter ───────────────────────────────────────────────────────────

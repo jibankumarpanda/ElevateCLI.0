@@ -10,9 +10,9 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
-	"github.com/jibankumarpanda/ElevateCLI/internal/database"
-	"github.com/jibankumarpanda/ElevateCLI/internal/output/formatters"
-	sec "github.com/jibankumarpanda/ElevateCLI/pkg/security"
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/database"
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/output/formatters"
+	sec "github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
 )
 
 // ─── history command ──────────────────────────────────────────────────────────

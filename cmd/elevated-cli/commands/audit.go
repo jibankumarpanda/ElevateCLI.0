@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	sec "github.com/jibankumarpanda/ElevateCLI/pkg/security"
+	sec "github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
 )
 
 func newAuditCmd() *cobra.Command {

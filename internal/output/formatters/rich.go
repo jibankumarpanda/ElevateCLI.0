@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	sec "github.com/jibankumarpanda/ElevateCLI/pkg/security"
+	sec "github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
 )
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
