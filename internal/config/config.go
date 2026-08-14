@@ -9,20 +9,51 @@ import (
 )
 
 type Config struct {
-	AI struct {
-		Provider string `mapstructure:"provider"`
-		Model    string `mapstructure:"model"`
-		APIKey   string `mapstructure:"api_key"`
-		Endpoint string `mapstructure:"endpoint"` // For Ollama
-	} `mapstructure:"ai"`
-	Database struct {
-		Path string `mapstructure:"path"`
-	} `mapstructure:"database"`
-	Sandbox struct {
-		Mode string `mapstructure:"mode"` // process, firecracker, docker
-	} `mapstructure:"sandbox"`
-	Policy  PolicyConfig  `mapstructure:"policy"`
-	Scoring ScoringConfig `mapstructure:"scoring"`
+	AI       AIConfig       `mapstructure:"ai"`
+	Database DatabaseConfig `mapstructure:"database"`
+	Sandbox  SandboxConfig  `mapstructure:"sandbox"`
+	Output   OutputConfig   `mapstructure:"output"`
+	Logger   LoggerConfig   `mapstructure:"logger"`
+	Policy   PolicyConfig   `mapstructure:"policy"`
+	Scoring  ScoringConfig  `mapstructure:"scoring"`
+}
+
+// AIConfig configures the LLM provider used for code generation.
+type AIConfig struct {
+	Provider   string `mapstructure:"provider"` // openai | anthropic | local
+	Model      string `mapstructure:"model"`
+	APIKey     string `mapstructure:"api_key"`
+	Endpoint   string `mapstructure:"endpoint"`   // For Ollama/local providers
+	TimeoutSec int    `mapstructure:"timeout_sec"` // LLM call timeout in seconds
+}
+
+// DatabaseConfig controls the local audit database.
+type DatabaseConfig struct {
+	Path string `mapstructure:"path"`
+}
+
+// SandboxConfig controls how generated code is executed in isolation.
+type SandboxConfig struct {
+	Mode          string `mapstructure:"mode"` // process | firecracker | docker | skip
+	TimeoutSec    int    `mapstructure:"timeout_sec"`
+	MaxMemoryMB   int    `mapstructure:"max_memory_mb"`
+	BlockNetwork  bool   `mapstructure:"block_network"`
+}
+
+// OutputConfig controls how scan results are displayed and stored.
+type OutputConfig struct {
+	Format  string `mapstructure:"format"` // rich | json | sarif | plain
+	ShowCode bool  `mapstructure:"show_code"`
+	AuditDB string `mapstructure:"audit_db"` // SQLite path for scan history
+}
+
+// LoggerConfig mirrors the logger package's config for structured logging.
+type LoggerConfig struct {
+	Level      string `mapstructure:"level"` // debug | info | warn | error
+	Format     string `mapstructure:"format"` // json | console
+	File       string `mapstructure:"file"`
+	MaxSizeMB  int    `mapstructure:"max_size_mb"`
+	MaxBackups int    `mapstructure:"max_backups"`
 }
 
 // PolicyConfig defines the security-policy rules enforced against generated code.
@@ -58,15 +89,34 @@ type ScoringConfig struct {
 	FailClosed    *bool   `mapstructure:"fail_closed"`    // default true
 }
 
+// LoadConfig loads configuration using the default search paths.
+// It is kept as a convenience wrapper for callers that have no explicit file.
 func LoadConfig() (*Config, error) {
+	return Load("")
+}
+
+// Load resolves the configuration from defaults, an optional explicit config
+// file, environment variables, and flags. cfgFile may be empty to use the
+// default search paths (project directory, then user home).
+func Load(cfgFile string) (*Config, error) {
 	v := viper.New()
 
 	// Set defaults
 	v.SetDefault("ai.provider", "openai")
 	v.SetDefault("ai.model", "gpt-4o")
 	v.SetDefault("ai.endpoint", "http://localhost:11434")
+	v.SetDefault("ai.timeout_sec", 120)
 	v.SetDefault("database.path", "secure-ai.db")
 	v.SetDefault("sandbox.mode", "process")
+	v.SetDefault("sandbox.timeout_sec", 10)
+	v.SetDefault("sandbox.max_memory_mb", 256)
+	v.SetDefault("sandbox.block_network", true)
+	v.SetDefault("output.format", "rich")
+	v.SetDefault("output.show_code", false)
+	v.SetDefault("output.audit_db", "secure-ai.db")
+	v.SetDefault("logger.level", "info")
+	v.SetDefault("logger.format", "console")
+	v.SetDefault("logger.file", "")
 	v.SetDefault("policy.file", ".elevated-cli.yaml")
 
 	// Security scoring defaults — the formula and fail-closed behaviour are
@@ -79,14 +129,18 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("scoring.pass_threshold", 70)
 	v.SetDefault("scoring.fail_closed", true)
 
-	// Config file locations
-	v.SetConfigName(".elevated-cli")
-	v.SetConfigType("yaml")
-	v.AddConfigPath(".") // Project level
+	if cfgFile != "" {
+		v.SetConfigFile(cfgFile)
+	} else {
+		// Config file locations
+		v.SetConfigName(".elevated-cli")
+		v.SetConfigType("yaml")
+		v.AddConfigPath(".") // Project level
 
-	home, err := os.UserHomeDir()
-	if err == nil {
-		v.AddConfigPath(home) // User level (~/.secure-ai.yaml)
+		home, err := os.UserHomeDir()
+		if err == nil {
+			v.AddConfigPath(home) // User level (~/.elevated-cli.yaml)
+		}
 	}
 
 	// Environment variables
