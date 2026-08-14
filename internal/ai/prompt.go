@@ -15,13 +15,15 @@ func BuildGeneratePrompt(prompt, language string) string {
 	return fmt.Sprintf(`You are a senior software engineer. Write production-grade, secure %s code for the following request.
 
 Requirements:
-- Return ONLY the source code inside a single markdown code block (```%s ... ```).
+- Return ONLY the source code inside a single markdown code block (`+fence+`%s ... `+fence+`).
 - No explanations, no commentary, no multiple code blocks.
 - Follow security best practices: no hardcoded secrets, validate inputs, handle errors.
 - Prefer the standard library over third-party dependencies.
 
 Request: %s`, language, language, prompt)
 }
+
+const fence = "```"
 
 var fenceRegexp = regexp.MustCompile("(?s)```([a-zA-Z0-9_+-]*)[ \t]*\n(.*?)```")
 
