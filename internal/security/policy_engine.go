@@ -11,9 +11,9 @@ import (
 	"go/token"
 	"strings"
 
-	"github.com/jibankumarpanda/ElevateCLI/internal/config"
-	"github.com/jibankumarpanda/ElevateCLI/internal/logger"
-	sec "github.com/jibankumarpanda/ElevateCLI/pkg/security"
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/config"
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/logger"
+	sec "github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
 	"go.uber.org/zap"
 )
 
