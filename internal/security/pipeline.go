@@ -66,9 +66,19 @@ func New(cfg config.Config, static StaticAnalyzer, deps DependencyAuditor,
 	}
 }
 
-// ─── Run ─────────────────────────────────────────────────────────────────────
+// sandboxRequired reports whether the configured sandbox mode mandates actual
+// execution. When the user opts out (--no-sandbox, mode "skip") skipping is a
+// deliberate decision, not an analysis failure.
+func (p *Pipeline) sandboxRequired() bool {
+	switch p.cfg.Sandbox.Mode {
+	case "process", "firecracker", "docker":
+		return true
+	default:
+		return false
+	}
+}
 
-// Run executes the full 4-stage pipeline and returns the Report.
+// ─── Run ─────────────────────────────────────────────────────────────────────// Run executes the full 4-stage pipeline and returns the Report.
 func (p *Pipeline) Run(ctx context.Context, prompt, code, language, aiProvider, aiModel string) (*sec.Report, error) {
 	start := time.Now()
 	scanID := uuid.New().String()
@@ -138,11 +148,17 @@ func (p *Pipeline) Run(ctx context.Context, prompt, code, language, aiProvider, 
 		close(ch)
 	}()
 
-	// Collect stage results
+	// Collect stage results.
+	// analysisComplete stays true only when every mandatory stage ran. A stage
+	// error (e.g. gosec binary missing) means the result is partial, and the
+	// final verdict must fail closed instead of being presented as safe.
+	analysisComplete := true
 	for r := range ch {
 		if r.err != nil {
-			// Non-fatal: log and continue; the stage contributes 0 to its score
-			log.Warn("pipeline stage error",
+			analysisComplete = false
+			// Non-fatal to collection: the stage's findings are still kept, but
+			// the pipeline is now marked incomplete.
+			log.Warn("pipeline stage error — analysis incomplete",
 				zap.String("stage", r.stage),
 				zap.Error(r.err),
 			)
@@ -154,16 +170,28 @@ func (p *Pipeline) Run(ctx context.Context, prompt, code, language, aiProvider, 
 
 	// ── Stage 4: Sandbox execution ────────────────────────────────────────
 	log.Info("stage 4: sandbox execution started")
+	sandboxRequired := p.sandboxRequired()
 	sandboxResult, err := p.sandbox.Run(ctx, code, language)
 	if err != nil {
 		log.Warn("sandbox execution error", zap.Error(err))
+		if sandboxRequired {
+			// The sandbox was required and failed to run: runtime behaviour
+			// was never verified — fail closed.
+			analysisComplete = false
+		}
 		sandboxResult = sec.SandboxResult{
 			Executed:   false,
-			Skipped:    true,
-			SkipReason: fmt.Sprintf("sandbox error: %v", err),
+			Skipped:    !sandboxRequired,
+			SkipReason: fmt.Sprintf("sandbox execution error: %v", err),
 		}
 	}
 	report.Sandbox = sandboxResult
+
+	// A required sandbox that did not execute (e.g. unsupported language)
+	// means runtime behaviour could not be verified — fail closed.
+	if sandboxRequired && !sandboxResult.Executed && !sandboxResult.Skipped {
+		analysisComplete = false
+	}
 	log.Info("stage 4: sandbox execution complete",
 		zap.Bool("success", sandboxResult.Success),
 		zap.String("mode", sandboxResult.Mode),
@@ -175,10 +203,12 @@ func (p *Pipeline) Run(ctx context.Context, prompt, code, language, aiProvider, 
 		report.Vulns,
 		report.Violations,
 		report.Sandbox,
+		analysisComplete,
 	)
 	report.StageScores = stages
 	report.FinalScore = final
 	report.Verdict = verdict
+	report.AnalysisComplete = analysisComplete
 	report.Duration = time.Since(start)
 
 	log.Info("pipeline complete",

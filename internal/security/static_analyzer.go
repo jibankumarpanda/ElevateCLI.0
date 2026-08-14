@@ -112,12 +112,26 @@ func runGosec(ctx context.Context, code string) ([]sec.Finding, error) {
 		return nil, err
 	}
 
-	// Run gosec — output as JSON for reliable parsing
+	// Run gosec — output as JSON for reliable parsing.
+	// gosec exits non-zero when it finds issues; `out` is still valid JSON.
 	cmd := exec.CommandContext(ctx, "gosec", "-fmt=json", "-quiet", "./...")
 	cmd.Dir = tmpDir
 
-	out, _ := cmd.Output() // gosec exits non-zero when it finds issues; that's fine
-	if len(out) == 0 {
+	out, runErr := cmd.Output()
+
+	// A missing gosec binary is a hard, fail-closed error: the scanner did not
+	// actually run, so a "clean" result would be false. The pipeline uses this
+	// error to mark the analysis incomplete rather than scoring it as safe.
+	if runErr != nil && errors.Is(runErr, exec.ErrNotFound) {
+		return nil, fmt.Errorf("gosec binary not found in PATH: %w", runErr)
+	}
+
+	// No output at all: either a clean scan or a silent tool failure. Only a
+	// successful exit with no output is a true clean scan.
+	if len(bytes.TrimSpace(out)) == 0 {
+		if runErr != nil {
+			return nil, fmt.Errorf("gosec produced no output: %w", runErr)
+		}
 		return nil, nil
 	}
 

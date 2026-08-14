@@ -69,7 +69,7 @@ func (e *PolicyEngineImpl) checkGo(code string) ([]sec.PolicyViolation, error) {
 				break
 			}
 			importPath := strings.Trim(node.Path.Value, `"`)
-			for _, blocked := range e.cfg.BlockedImports {
+			for _, blocked := range e.cfg.Rules.BlockedImports {
 				if importPath == blocked || strings.HasPrefix(importPath, blocked+"/") {
 					violations = append(violations, sec.PolicyViolation{
 						Rule:        "BLOCKED_IMPORT",
@@ -84,7 +84,7 @@ func (e *PolicyEngineImpl) checkGo(code string) ([]sec.PolicyViolation, error) {
 		// ── Check blocked function calls ──────────────────────────────────
 		case *ast.CallExpr:
 			callName := extractCallName(node)
-			for _, blocked := range e.cfg.BlockedFunctions {
+			for _, blocked := range e.cfg.Rules.BlockedFunctions {
 				if strings.EqualFold(callName, blocked) {
 					violations = append(violations, sec.PolicyViolation{
 						Rule:        "BLOCKED_FUNCTION",
@@ -98,7 +98,7 @@ func (e *PolicyEngineImpl) checkGo(code string) ([]sec.PolicyViolation, error) {
 
 		// ── Check error handling ──────────────────────────────────────────
 		case *ast.AssignStmt:
-			if !e.cfg.RequireErrorHandling {
+			if !e.cfg.Rules.RequireErrorHandling {
 				break
 			}
 			// Look for err := ... followed by _ = err or missing check
@@ -135,7 +135,7 @@ func (e *PolicyEngineImpl) checkGeneric(code, language string) []sec.PolicyViola
 
 	for lineNum, line := range lines {
 		// Check blocked imports/requires
-		for _, blocked := range e.cfg.BlockedImports {
+		for _, blocked := range e.cfg.Rules.BlockedImports {
 			if strings.Contains(line, blocked) {
 				violations = append(violations, sec.PolicyViolation{
 					Rule:        "BLOCKED_IMPORT",
@@ -148,7 +148,7 @@ func (e *PolicyEngineImpl) checkGeneric(code, language string) []sec.PolicyViola
 		}
 
 		// Check blocked function calls
-		for _, blocked := range e.cfg.BlockedFunctions {
+		for _, blocked := range e.cfg.Rules.BlockedFunctions {
 			if strings.Contains(line, blocked+"(") {
 				violations = append(violations, sec.PolicyViolation{
 					Rule:        "BLOCKED_FUNCTION",
