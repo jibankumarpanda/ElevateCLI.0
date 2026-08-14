@@ -33,25 +33,34 @@ func NewStaticAnalyzer() *StaticAnalyzerImpl {
 // Analyze runs SAST on the generated code.
 // For Go: runs gosec + custom AST checks.
 // For all languages: runs pattern-based checks for common vulnerabilities.
+//
+// The returned error is non-nil only when a mandatory check could not be
+// completed (e.g. the gosec binary is missing). Findings are still returned
+// so nothing is lost, but the pipeline treats a non-nil error as an
+// incomplete analysis and fails closed. A missing scanner must never be
+// reported as a clean scan.
 func (a *StaticAnalyzerImpl) Analyze(ctx context.Context, code, language string) ([]sec.Finding, error) {
 	log := logger.WithStage("sast")
 	var findings []sec.Finding
 
 	switch strings.ToLower(language) {
 	case "go", "golang":
-		// Run gosec on a temp file
-		gosecFindings, err := runGosec(ctx, code)
-		if err != nil {
-			log.Warn("gosec failed, falling back to AST-only analysis", zap.Error(err))
-		}
-		findings = append(findings, gosecFindings...)
-
-		// Also run our own AST checks (catches things gosec misses)
+		// AST checks run first; a syntax error is reported as a finding and
+		// does not block the remaining checks.
 		astFindings, err := runGoAST(code)
 		if err != nil {
 			log.Warn("AST analysis failed", zap.Error(err))
 		}
 		findings = append(findings, astFindings...)
+
+		// gosec is a mandatory SAST stage for Go. If it cannot run, report
+		// the failure so the pipeline marks the analysis incomplete.
+		gosecFindings, err := runGosec(ctx, code)
+		if err != nil {
+			log.Warn("gosec unavailable — static analysis incomplete", zap.Error(err))
+			return findings, err
+		}
+		findings = append(findings, gosecFindings...)
 
 	case "python", "python3":
 		findings = append(findings, runPatternCheck(code, "python")...)
