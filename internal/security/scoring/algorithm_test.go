@@ -337,8 +337,8 @@ func TestPolicyScoreClamps(t *testing.T) {
 	if stages.Policy != 0 {
 		t.Fatalf("policy stage = %d, want 0", stages.Policy)
 	}
-	if final != 70 { // 40 + 30 + 0 + 10
-		t.Fatalf("final = %d, want 70", final)
+	if final != 80 { // 40 + 30 + 0 + 10
+		t.Fatalf("final = %d, want 80", final)
 	}
 }
 
