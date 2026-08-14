@@ -46,6 +46,16 @@ func (c *Calculator) passThreshold() int {
 	return c.cfg.PassThreshold
 }
 
+// failClosed reports whether an incomplete analysis must block approval.
+// Unset (nil) defaults to true, so a zero-value config can never silently
+// become fail-open; only an explicit false opts out.
+func (c *Calculator) failClosed() bool {
+	if c.cfg.FailClosed == nil {
+		return true
+	}
+	return *c.cfg.FailClosed
+}
+
 // effectiveWeights returns the stage weights, normalised so they sum to 1.0.
 // If the configured weights are all zero, the documented defaults are used.
 func (c *Calculator) effectiveWeights() (sast, deps, policy, sandbox float64) {

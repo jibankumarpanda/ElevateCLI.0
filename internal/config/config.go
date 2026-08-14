@@ -47,13 +47,15 @@ type PolicyConfig struct {
 // Weights must sum to 1.0 (they are normalised if they do not). FailClosed
 // defaults to true: when a mandatory check cannot complete, the result is
 // ANALYSIS_INCOMPLETE rather than a partial score that could be read as safe.
+// It is a *bool so that a zero-value ScoringConfig{} fails closed by default —
+// only an explicit `fail_closed: false` opts into fail-open.
 type ScoringConfig struct {
 	SASTWeight    float64 `mapstructure:"sast_weight"`
 	DepWeight     float64 `mapstructure:"dep_weight"`
 	PolicyWeight  float64 `mapstructure:"policy_weight"`
 	SandboxWeight float64 `mapstructure:"sandbox_weight"`
 	PassThreshold int     `mapstructure:"pass_threshold"` // 0–100, default 70
-	FailClosed    bool    `mapstructure:"fail_closed"`    // default true
+	FailClosed    *bool   `mapstructure:"fail_closed"`    // default true
 }
 
 func LoadConfig() (*Config, error) {
