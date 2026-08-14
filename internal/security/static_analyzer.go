@@ -4,8 +4,10 @@
 package security
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -15,8 +17,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/jibankumarpanda/ElevateCLI/internal/logger"
-	sec "github.com/jibankumarpanda/ElevateCLI/pkg/security"
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/logger"
+	sec "github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
 	"go.uber.org/zap"
 )
 
