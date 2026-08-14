@@ -123,7 +123,7 @@ func (c *Calculator) verdict(final int, sandbox sec.SandboxResult, hasCritical, 
 	//    a partial result is never presented as safe. In fail-open mode the
 	//    score is still computed but the verdict can never be APPROVED.
 	if !analysisComplete {
-		if c.cfg.FailClosed {
+		if c.failClosed() {
 			return sec.VerdictAnalysisIncomplete
 		}
 		if final >= c.passThreshold() {
