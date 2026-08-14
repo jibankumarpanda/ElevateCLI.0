@@ -190,3 +190,23 @@ func (r *Report) CriticalCount() int {
 func (r *Report) HasBlockers() bool {
 	return r.CriticalCount() > 0 || (!r.Sandbox.Skipped && !r.Sandbox.Success)
 }
+
+// ─── AI provider errors ──────────────────────────────────────────────────────
+
+// AIProviderError is returned when the configured AI provider cannot be
+// initialised or an API call fails. It carries the provider name so callers
+// can give actionable diagnostics (e.g. "set OPENAI_API_KEY").
+type AIProviderError struct {
+	Provider string
+	Message  string
+	Err      error
+}
+
+func (e *AIProviderError) Error() string {
+	if e.Err != nil {
+		return "AI provider " + e.Provider + ": " + e.Message + ": " + e.Err.Error()
+	}
+	return "AI provider " + e.Provider + ": " + e.Message
+}
+
+func (e *AIProviderError) Unwrap() error { return e.Err }
