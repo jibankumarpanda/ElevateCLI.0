@@ -27,6 +27,6 @@ func (fr *FirecrackerRunner) Run(ctx context.Context, code string, lang string) 
 	// This code would orchestrate the VM lifecycle via firecracker-go-sdk.
 	
 	fmt.Println("Firecracker execution requested. Falling back to ProcessRunner for now.")
-	pr := NewProcessRunner(fr.Limits)
+	pr := NewProcessRunner(int(fr.Limits.Timeout.Seconds()), fr.Limits.MemoryMB, !fr.Limits.AllowNet)
 	return pr.Run(ctx, code, lang)
 }
