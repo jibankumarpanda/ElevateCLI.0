@@ -146,8 +146,9 @@ func findLockfiles(dir string) []lockfile {
 // ─── Scanner dispatch ─────────────────────────────────────────────────────────
 
 // scanLockfile runs the appropriate scanner for a lockfile.
+// govulncheck consumes a Go module (go.mod); osv-scanner consumes lockfiles.
 func (d *DependencyAuditorImpl) scanLockfile(ctx context.Context, lf lockfile) ([]sec.Vulnerability, error) {
-	if lf.IsGo && d.cfg.Govulncheck {
+	if lf.IsGo && filepath.Base(lf.Path) == "go.mod" && d.cfg.Govulncheck {
 		return runGovulncheck(ctx, filepath.Dir(lf.Path))
 	}
 	if d.cfg.OSVScanner {
