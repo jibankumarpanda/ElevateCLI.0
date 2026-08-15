@@ -106,7 +106,7 @@ func newGenerateCmd() *cobra.Command {
 			// ── Run through security pipeline ─────────────────────────────
 			fmt.Fprintf(os.Stderr, "🔍 Running security pipeline...\n")
 
-			pipeline, err := buildPipeline(*cfg, runCode)
+			pipeline, err := buildPipeline(*cfg, runCode, "")
 			if err != nil {
 				return fmt.Errorf("building pipeline: %w", err)
 			}

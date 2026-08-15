@@ -42,7 +42,11 @@ func newAuditCmd() *cobra.Command {
 				outFmt = outFormat
 			}
 
-			pipeline, err := buildPipeline(*cfg, false) // no sandbox for audits by default
+			srcDir := filepath.Dir(filePath)
+			if dirPath != "" {
+				srcDir = dirPath
+			}
+			pipeline, err := buildPipeline(*cfg, false, srcDir) // no sandbox for audits by default
 			if err != nil {
 				return fmt.Errorf("building pipeline: %w", err)
 			}
