@@ -183,7 +183,9 @@ func runGovulncheck(ctx context.Context, moduleDir string) ([]sec.Vulnerability,
 	cmd := exec.CommandContext(ctx, "govulncheck", "-format", "json", "./...")
 	cmd.Dir = moduleDir
 
-	out, runErr := cmd.CombinedOutput()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, runErr := cmd.Output()
 
 	// Missing binary: hard, fail-closed error — the scanner never ran.
 	if runErr != nil && errors.Is(runErr, exec.ErrNotFound) {
@@ -193,7 +195,7 @@ func runGovulncheck(ctx context.Context, moduleDir string) ([]sec.Vulnerability,
 	// No output at all: only a zero exit is a true clean scan.
 	if len(bytes.TrimSpace(out)) == 0 {
 		if runErr != nil {
-			return nil, fmt.Errorf("govulncheck produced no output: %w", runErr)
+			return nil, fmt.Errorf("govulncheck failed: %v: %s", runErr, strings.TrimSpace(stderr.String()))
 		}
 		return nil, nil
 	}
@@ -289,7 +291,11 @@ func parseGovulncheck(out []byte) ([]sec.Vulnerability, error) {
 func runOSVScanner(ctx context.Context, lockfilePath string) ([]sec.Vulnerability, error) {
 	cmd := exec.CommandContext(ctx, "osv-scanner", "scan", "--format", "json", "--lockfile", lockfilePath)
 
-	out, runErr := cmd.CombinedOutput()
+	// osv-scanner writes progress to stderr; JSON results to stdout only.
+	// CombinedOutput would interleave them and corrupt the JSON.
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, runErr := cmd.Output()
 
 	if runErr != nil && errors.Is(runErr, exec.ErrNotFound) {
 		return nil, fmt.Errorf("osv-scanner binary not found in PATH: %w", runErr)
@@ -297,7 +303,7 @@ func runOSVScanner(ctx context.Context, lockfilePath string) ([]sec.Vulnerabilit
 
 	if len(bytes.TrimSpace(out)) == 0 {
 		if runErr != nil {
-			return nil, fmt.Errorf("osv-scanner produced no output: %w", runErr)
+			return nil, fmt.Errorf("osv-scanner failed: %v: %s", runErr, strings.TrimSpace(stderr.String()))
 		}
 		return nil, nil
 	}
