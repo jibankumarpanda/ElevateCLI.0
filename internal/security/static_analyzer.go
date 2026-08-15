@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/jibankumarpanda/ElevateCLI.0/internal/logger"
@@ -149,12 +150,28 @@ func runGosec(ctx context.Context, code string) ([]sec.Finding, error) {
 			Description: issue.Details,
 			Severity:    mapGosecSeverity(issue.Severity),
 			File:        "generated_code.go",
+			Line:        parseRangeStart(issue.Line),
+			Column:      parseRangeStart(issue.Column),
 			Code:        strings.TrimSpace(issue.Code),
 			Source:      "gosec",
 			Suggestion:  gosecSuggestion(issue.RuleID),
 		})
 	}
 	return findings, nil
+}
+
+// parseRangeStart converts a gosec line/column value — which may be a range
+// such as "42-45" — into its starting integer. Invalid values yield 0.
+func parseRangeStart(v string) int {
+	v = strings.TrimSpace(v)
+	if i := strings.IndexByte(v, '-'); i > 0 {
+		v = v[:i]
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 func mapGosecSeverity(s string) sec.Severity {
