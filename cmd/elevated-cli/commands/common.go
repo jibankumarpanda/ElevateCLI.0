@@ -15,12 +15,15 @@ import (
 
 // buildPipeline wires together all 4 pipeline stages and returns a ready Pipeline.
 // Called by generate.go and audit.go so the wiring is in one place.
-func buildPipeline(cfg config.Config, runSandbox bool) (*security.Pipeline, error) {
+// srcDir is the project directory used for lockfile discovery in the
+// dependency stage; pass "" when only raw code is available (generate).
+func buildPipeline(cfg config.Config, runSandbox bool, srcDir string) (*security.Pipeline, error) {
 	// Stage 1: Static analyzer
 	staticAnalyzer := security.NewStaticAnalyzer()
 
-	// Stage 2: Dependency auditor
-	depAuditor := security.NewDependencyAuditor()
+	// Stage 2: Dependency auditor (CVE scan via govulncheck/osv-scanner)
+	depAuditor := security.NewDependencyAuditor(cfg.Analysis)
+	depAuditor.Dir = srcDir
 
 	// Stage 3: Policy engine (loaded from config rules)
 	policyEngine := security.NewPolicyEngine(cfg.Policy)
