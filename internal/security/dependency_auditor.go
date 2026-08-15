@@ -70,7 +70,7 @@ func (d *DependencyAuditorImpl) Audit(ctx context.Context, code, language string
 		return nil, nil
 	}
 
-	lockfiles := findLockfiles(d.Dir)
+	lockfiles := filterRedundant(findLockfiles(d.Dir))
 	if len(lockfiles) == 0 {
 		log.Info("dependency audit: no lockfiles found — nothing to CVE-scan",
 			zap.String("dir", d.Dir))
@@ -140,6 +140,26 @@ func findLockfiles(dir string) []lockfile {
 		}
 		return nil
 	})
+	return out
+}
+
+// filterRedundant drops go.sum files when a go.mod exists in the same
+// directory: govulncheck (or osv-scanner on go.mod) already covers the module,
+// and osv-scanner cannot extract dependencies from go.sum alone.
+func filterRedundant(lfs []lockfile) []lockfile {
+	hasGoMod := map[string]bool{}
+	for _, lf := range lfs {
+		if lf.IsGo && filepath.Base(lf.Path) == "go.mod" {
+			hasGoMod[filepath.Dir(lf.Path)] = true
+		}
+	}
+	out := lfs[:0]
+	for _, lf := range lfs {
+		if lf.IsGo && filepath.Base(lf.Path) == "go.sum" && hasGoMod[filepath.Dir(lf.Path)] {
+			continue
+		}
+		out = append(out, lf)
+	}
 	return out
 }
 
