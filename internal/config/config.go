@@ -9,13 +9,14 @@ import (
 )
 
 type Config struct {
-	AI       AIConfig       `mapstructure:"ai"`
-	Database DatabaseConfig `mapstructure:"database"`
-	Sandbox  SandboxConfig  `mapstructure:"sandbox"`
-	Output   OutputConfig   `mapstructure:"output"`
-	Logger   LoggerConfig   `mapstructure:"logger"`
-	Policy   PolicyConfig   `mapstructure:"policy"`
-	Scoring  ScoringConfig  `mapstructure:"scoring"`
+	AI       AIConfig        `mapstructure:"ai"`
+	Database DatabaseConfig  `mapstructure:"database"`
+	Sandbox  SandboxConfig   `mapstructure:"sandbox"`
+	Output   OutputConfig    `mapstructure:"output"`
+	Logger   LoggerConfig    `mapstructure:"logger"`
+	Policy   PolicyConfig    `mapstructure:"policy"`
+	Scoring  ScoringConfig   `mapstructure:"scoring"`
+	Analysis AnalysisConfig  `mapstructure:"analysis"`
 }
 
 // AIConfig configures the LLM provider used for code generation.
@@ -67,6 +68,16 @@ type PolicyConfig struct {
 		RequireErrorHandling    bool     `mapstructure:"require_error_handling"`
 		MaxCyclomaticComplexity int      `mapstructure:"max_cyclomatic_complexity"`
 	} `mapstructure:"rules"`
+}
+
+// AnalysisConfig controls which optional security scanners are run as part of
+// the pipeline. A scanner that is enabled but cannot run (binary missing) is
+// treated as incomplete analysis and fails closed, matching the documented
+// security contract: a missing scanner must never be reported as a clean scan.
+type AnalysisConfig struct {
+	Govulncheck    bool `mapstructure:"govulncheck"`
+	OSVScanner     bool `mapstructure:"osv_scanner"`
+	CustomASTRules bool `mapstructure:"custom_ast_rules"`
 }
 
 // ScoringConfig controls the deterministic security scoring algorithm.
@@ -128,6 +139,12 @@ func Load(cfgFile string) (*Config, error) {
 	v.SetDefault("scoring.sandbox_weight", 0.10)
 	v.SetDefault("scoring.pass_threshold", 70)
 	v.SetDefault("scoring.fail_closed", true)
+
+	// Analysis — scanners run in the dependency stage. Enabled scanners that
+	// cannot run (missing binary) fail closed instead of reporting a clean scan.
+	v.SetDefault("analysis.govulncheck", true)
+	v.SetDefault("analysis.osv_scanner", true)
+	v.SetDefault("analysis.custom_ast_rules", true)
 
 	if cfgFile != "" {
 		v.SetConfigFile(cfgFile)
