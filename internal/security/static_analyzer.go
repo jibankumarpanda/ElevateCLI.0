@@ -168,7 +168,7 @@ func parseRangeStart(v string) int {
 		v = v[:i]
 	}
 	n, err := strconv.Atoi(v)
-	if err != nil {
+	if err != nil || n < 0 {
 		return 0
 	}
 	return n
