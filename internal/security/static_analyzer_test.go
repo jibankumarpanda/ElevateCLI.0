@@ -18,7 +18,7 @@ func main() {
 	cmd := exec.Command("ls", "-la")
 	out, _ := cmd.Output()
 	fmt.Println(string(out))
-	_ = password
+	fmt.Println(password)
 }
 `
 
