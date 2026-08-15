@@ -9,16 +9,19 @@ import (
 const insecureGoCode = `package main
 
 import (
-	"fmt"
+	"context"
 	"os/exec"
+	"strconv"
 )
 
-func main() {
-	password := "hunter2"
-	cmd := exec.Command("ls", "-la")
-	out, _ := cmd.Output()
-	fmt.Println(string(out))
-	fmt.Println(password)
+func run(filePath string) error {
+	ctx := context.Background()
+	cmd := exec.CommandContext(ctx, "ts-node", filePath)
+	_ = cmd
+	strconv.Atoi("42")
+	apiKey := "AKIAIOSFODNN7EXAMPLE" //nolint:gosec
+	_ = apiKey
+	return nil
 }
 `
 
