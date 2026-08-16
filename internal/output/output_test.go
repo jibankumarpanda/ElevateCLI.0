@@ -82,4 +82,3 @@ func TestVerdictIcon(t *testing.T) {
 		t.Error("blocked icon")
 	}
 }
-

@@ -168,10 +168,18 @@ func TestFilterRedundant(t *testing.T) {
 	out := filterRedundant(in)
 	var names []string
 	for _, lf := range out {
-		names = append(names, filepath.Base(lf.Path))
+		rel, _ := filepath.Rel(dir, lf.Path)
+		names = append(names, rel)
 	}
-	if len(names) != 3 {
-		t.Fatalf("filterRedundant = %v, want 3 entries", names)
+	want := []string{"go.mod", filepath.Join("no-mod", "go.sum"), "package-lock.json"}
+	if len(names) != len(want) {
+		t.Fatalf("filterRedundant = %v, want %v", names, want)
+	}
+	for i, w := range want {
+		if names[i] != w {
+			t.Errorf("filterRedundant = %v, want %v", names, want)
+			break
+		}
 	}
 	for _, n := range names {
 		if n == "go.sum" {

@@ -26,10 +26,10 @@ func TestBuildGeneratePrompt(t *testing.T) {
 
 func TestExtractCodeBlock(t *testing.T) {
 	cases := []struct {
-		name       string
-		raw        string
-		wantCode   string
-		wantLang   string
+		name     string
+		raw      string
+		wantCode string
+		wantLang string
 	}{
 		{
 			name:     "go fence",
