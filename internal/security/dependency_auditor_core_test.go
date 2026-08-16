@@ -14,11 +14,14 @@ func TestCVSSBaseScore(t *testing.T) {
 		want   float64
 	}{
 		{"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", 9.8},
-		{"CVSS:3.1/AV:L/AC:H/PR:H/UI:R/S:C/C:L/I:L/A:L", 4.9},
+		{"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", 5.3},
+		{"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", 7.5},
+		{"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H", 7.5},
+		{"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H", 10.0},
+		{"CVSS:3.1/AV:L/AC:H/PR:H/UI:R/S:C/C:L/I:L/A:L", 4.4},
+		{"CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", 9.8},
 		{"not-a-vector", 0},
 		{"", 0},
-		{"CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", 9.8},
-		{"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", 5.3},
 	}
 	for _, c := range cases {
 		if got := cvssBaseScore(c.vector); got != c.want {
@@ -104,7 +107,7 @@ func TestGoImportsInvalidCode(t *testing.T) {
 }
 
 func TestMatchRepeated(t *testing.T) {
-	got := matchRepeated("a=1\nb=2\nc=3\n", `^(\w+)=`)
+	got := matchRepeated("a=1\nb=2\nc=3\n", `(?m)^(\w+)=`)
 	if len(got) != 3 || got[0] != "a" || got[2] != "c" {
 		t.Errorf("matchRepeated = %v", got)
 	}

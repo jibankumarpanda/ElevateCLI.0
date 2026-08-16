@@ -517,7 +517,7 @@ func extractImports(code, language string) []string {
 	case "python", "python3":
 		return matchRepeated(code, `(?:^|\n)\s*(?:import|from)\s+([\w.]+)`)
 	case "javascript", "js", "typescript", "ts":
-		return matchRepeated(code, `(?:require|import)\s*\(?\s*['"]([^'"]+)['"]`)
+		return matchRepeated(code, `(?:require|import)\s*\(?\s*(?:[\w\s{},*]+?\s+from\s+)?['"]([^'"]+)['"]`)
 	default:
 		return nil
 	}
