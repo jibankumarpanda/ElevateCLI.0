@@ -43,6 +43,12 @@ func NewProcessRunner(timeoutSec, maxMemoryMB int, blockNet bool) *ProcessRunner
 func (r *ProcessRunner) Run(ctx context.Context, code, language string) (sec.SandboxResult, error) {
 	start := time.Now()
 
+	// Establish the timeout before building any command so the deadline is
+	// baked into the exec.Cmd at creation — no need to rebuild it afterwards.
+	timeoutCtx, cancel := context.WithTimeout(ctx,
+		time.Duration(r.timeoutSec)*time.Second)
+	defer cancel()
+
 	// Create isolated temp working directory
 	tmpDir, err := os.MkdirTemp("", "elevated-sandbox-*")
 	if err != nil {
@@ -57,7 +63,7 @@ func (r *ProcessRunner) Run(ctx context.Context, code, language string) (sec.San
 	}
 
 	// Build the execution command for this language
-	cmd, err := buildCommand(ctx, codeFile, language, tmpDir)
+	cmd, err := buildCommand(timeoutCtx, codeFile, language, tmpDir)
 	if err != nil {
 		return sec.SandboxResult{
 			Executed:   false,
@@ -69,12 +75,6 @@ func (r *ProcessRunner) Run(ctx context.Context, code, language string) (sec.San
 
 	// Apply process-level restrictions
 	applyRestrictions(cmd)
-
-	// Set timeout
-	timeoutCtx, cancel := context.WithTimeout(ctx,
-		time.Duration(r.timeoutSec)*time.Second)
-	defer cancel()
-	cmd = rebuildWithContext(timeoutCtx, cmd)
 
 	// Execute
 	output, runErr := cmd.CombinedOutput()
@@ -118,37 +118,64 @@ func writeCodeFile(dir, code, language string) (string, error) {
 }
 
 func buildCommand(ctx context.Context, codeFile, language, workDir string) (*exec.Cmd, error) {
+	// Defense in depth: the code file must live inside the sandbox working
+	// directory. The subprocess is launched with a bare filename and cmd.Dir
+	// scoping, so a stray path can never be parsed as a flag or reach outside
+	// the sandbox.
+	if err := ensureInside(codeFile, workDir); err != nil {
+		return nil, err
+	}
+
 	switch strings.ToLower(language) {
 	case "go", "golang":
 		// For Go we need a minimal go.mod in the temp dir
 		modContent := "module sandbox\ngo 1.22\n"
-		_ = os.WriteFile(filepath.Join(workDir, "go.mod"), []byte(modContent), 0600)
-		cmd := exec.CommandContext(ctx, "go", "run", codeFile)
+		if err := os.WriteFile(filepath.Join(workDir, "go.mod"), []byte(modContent), 0600); err != nil {
+			return nil, fmt.Errorf("writing go.mod: %w", err)
+		}
+		cmd := exec.CommandContext(ctx, "go", "run", "main.go")
 		cmd.Dir = workDir
 		return cmd, nil
 
 	case "python", "python3":
-		bin := "python3"
-		if runtime.GOOS == "windows" {
-			bin = "python"
-		}
-		cmd := exec.CommandContext(ctx, bin, codeFile)
+		cmd := exec.CommandContext(ctx, "python3", "main.py")
 		cmd.Dir = workDir
 		return cmd, nil
 
 	case "javascript", "js", "node":
-		cmd := exec.CommandContext(ctx, "node", codeFile)
+		cmd := exec.CommandContext(ctx, "node", "main.js")
 		cmd.Dir = workDir
 		return cmd, nil
 
 	case "typescript", "ts":
-		cmd := exec.CommandContext(ctx, "ts-node", codeFile)
+		cmd := exec.CommandContext(ctx, "ts-node", "main.ts")
 		cmd.Dir = workDir
 		return cmd, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported: %s", language)
 	}
+}
+
+// ensureInside verifies that file resolves within dir, rejecting path
+// traversal. Both paths are cleaned before comparison.
+func ensureInside(file, dir string) error {
+	cleanDir, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("resolving directory %q: %w", dir, err)
+	}
+	cleanFile, err := filepath.Abs(file)
+	if err != nil {
+		return fmt.Errorf("resolving file %q: %w", file, err)
+	}
+	rel, err := filepath.Rel(cleanDir, cleanFile)
+	if err != nil {
+		return fmt.Errorf("relating %q to %q: %w", cleanFile, cleanDir, err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return fmt.Errorf("code file %q is outside sandbox directory %q", file, dir)
+	}
+	return nil
 }
 
 // applyRestrictions sets syscall-level process isolation where available.
@@ -176,16 +203,7 @@ func applyRestrictions(cmd *exec.Cmd) {
 	}
 }
 
-// rebuildWithContext is needed because exec.Cmd.Args is not changeable after creation.
-// We re-create the command with the timeout context already applied via applyRestrictions.
-func rebuildWithContext(ctx context.Context, cmd *exec.Cmd) *exec.Cmd {
-	newCmd := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
-	newCmd.Dir = cmd.Dir
-	newCmd.Env = cmd.Env
-	newCmd.SysProcAttr = cmd.SysProcAttr
-	return newCmd
-}
-
+// langToExt maps a language name to its source file extension.
 func langToExt(lang string) string {
 	switch strings.ToLower(lang) {
 	case "go", "golang":
