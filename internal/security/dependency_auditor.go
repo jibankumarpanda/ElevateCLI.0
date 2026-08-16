@@ -458,20 +458,25 @@ func cvssBaseScore(vector string) float64 {
 	}
 
 	iss := 1 - (1-ci)*(1-ii)*(1-ai)
-	scopeFactor := 7.52
+	// CVSS 3.1 Impact uses different formulas depending on scope change:
+	//   S:U  Impact = 6.42 * ISS
+	//   S:C  Impact = 7.52 * (ISS - 0.029) - 3.25 * (ISS - 0.02)^15
+	var impact float64
 	if scopeChanged {
-		scopeFactor = 6.42
+		impact = 7.52*(iss-0.029) - 3.25*math.Pow(iss-0.02, 15)
+	} else {
+		impact = 6.42 * iss
 	}
-	impact := scopeFactor * iss
 	if impact <= 0 {
 		return 0
 	}
+
 	exploitability := 8.22 * av * ac * pr * ui
 	base := impact + exploitability
-	if scopeChanged {
-		base = 1.08 * base
-	}
-	return math.Min(math.Round(base*10)/10, 10)
+
+	// The spec's Roundup() returns the smallest multiple of 0.1 >= the input
+	// (a ceiling, not round-half-up), capped at 10.
+	return math.Min(math.Ceil(base*10)/10, 10)
 }
 
 func confValue(v string) float64 {
