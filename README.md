@@ -1,15 +1,12 @@
 # ElevatedCLI
 
-> Generate, scan, verify, and safely test AI-generated code from the terminal.
+> Generate, verify, and safely test AI-generated code from the terminal.
 
-[![Go Version](https://img.shields.io/badge/go-1.22%2B-blue.svg)](https://golang.org)
+[![Go Version](https://img.shields.io/badge/go-1.25-blue.svg)](https://golang.org)
 [![Security Scale](https://img.shields.io/badge/security-0--100-green.svg)](#security-scoring)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-`elevated-cli` ElevatedCLI is a Go-based command-line tool designed to make AI-assisted software development safer. It helps developers generate code through supported LLM providers, inspect that code for security risks, enforce organization policies, audit dependencies, and—when configured—execute code in an isolated environment.
-
----
-
-The goal is simple:
+`elevated-cli` is a Go-based CLI that generates code through supported LLM providers, then runs every result through a **4-stage security pipeline** (static analysis → dependency audit → policy enforcement → sandboxed execution) before showing you a verdict and a deterministic **security score (0–100)**.
 
 ```text
 Generate code faster.
@@ -21,45 +18,69 @@ Never execute untrusted code directly on the host.
 
 ---
 
+## Table of Contents
+
+- [Features](#features)
+- [How It Works](#how-it-works)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Commands](#commands)
+- [Verification Pipeline](#verification-pipeline)
+- [Security Scoring](#security-scoring)
+- [Output Formats](#output-formats)
+- [Configuration](#configuration)
+- [Security Policies](#security-policies)
+- [Audit History](#audit-history)
+- [Exit Codes](#exit-codes)
+- [Threat Model](#threat-model)
+- [Security Principles](#security-principles)
+- [Architecture](#architecture)
+- [Development](#development)
+- [Testing Requirements](#testing-requirements)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [Responsible Disclosure](#responsible-disclosure)
+- [License](#license)
+
+---
+
 ## Features
 
-### Current / Core Features
+### Implemented
 
-- Go-based CLI with a clean, extensible architecture
-- AI provider abstraction for cloud and local LLMs
-- Prompt-to-code generation workflow
-- Generated-code extraction and syntax validation
-- Static security analysis
-- Custom security-policy enforcement
-- Dependency vulnerability auditing
-- Security scoring and verdict generation
-- Human-readable terminal reports
-- JSON output for CI/CD integration
-- Structured logs and optional SQLite audit history
-- Configurable security rules
-- Cross-platform Go binary distribution
+- Go-based CLI (`elevated-cli`) with Cobra commands and Viper configuration
+- AI provider abstraction: **OpenAI**, **Anthropic**, and **local/Ollama** endpoints
+- Prompt-to-code generation with markdown code-block extraction
+- **4-stage security pipeline** (see [below](#verification-pipeline)):
+  1. Static analysis — `gosec` (Go) plus custom `go/ast` and pattern-based checks
+  2. Dependency audit — `govulncheck` (Go) and `osv-scanner` (multi-language lockfiles)
+  3. Policy enforcement — configurable blocked imports/functions and error-handling rules
+  4. Sandboxed execution — isolated process runner with timeout and environment scrubbing
+- Deterministic security scoring (0–100) with fail-closed verdicts
+- Report formats: **rich** (terminal), **json**, **sarif**, **plain**
+- Structured logging (console or JSON) via `zap`
+- SQLite audit history (`history` command)
+- `audit` command for existing files/directories, including CVE scanning of lockfiles
+- `config` command to inspect or modify configuration
+- GitHub Actions CI/CD integration via JSON/SARIF output
 
-### Planned Security Capabilities
+### Planned (not yet implemented)
 
-- `gosec` integration for Go security scanning
-- `govulncheck` and OSV-Scanner dependency auditing
-- AST-based rules using `go/ast` and `go/parser`
-- Detection of hardcoded secrets and unsafe APIs
-- Dangerous import and command-execution detection
-- File-system and network-access policies
-- Firecracker microVM execution support
-- gVisor-based sandbox support
-- CPU, memory, process, timeout, and output limits
-- Network-deny-by-default sandbox policies
-- SARIF report generation
-- CI/CD security gates
-- Software Bill of Materials (SBOM) generation
+- Firecracker microVM and gVisor isolation (the process runner is the current default)
+- Docker-based sandbox isolation
+- Memory, CPU, and network enforcement inside the process runner (config exists; limits are not yet applied at the syscall level)
+- SBOM generation
+- Signed release binaries and reproducible builds
+- CI security gates (exit-code contract only today)
+- Policy bundles and versioning
+- Audit retention controls
+- Metrics and observability
 
 > Features listed as **planned** must not be treated as available until they are implemented, tested, and documented in the release notes.
 
 ---
 
-## Why Secure AI Developer CLI?
+## How It Works
 
 AI coding tools can accelerate development, but generated code can contain:
 
@@ -68,126 +89,38 @@ AI coding tools can accelerate development, but generated code can contain:
 - Unsafe package imports
 - Vulnerable third-party dependencies
 - Insecure deserialization
-- Excessive file-system permissions
-- Unrestricted network access
 - Unsafe shell or process execution
 - Logic errors that static analysis may not detect
 
-Secure AI Developer CLI places verification between AI generation and code execution:
+ElevatedCLI places verification between AI generation and any use of the code:
 
 ```text
 Developer Prompt
       │
       ▼
-AI Code Generation
+AI Code Generation (OpenAI / Anthropic / Ollama)
       │
       ▼
 Code Extraction and Syntax Validation
       │
       ▼
-Static Analysis and Custom AST Rules
+Stage 1 — Static Analysis (gosec + AST + patterns)
       │
       ▼
-Dependency Vulnerability Audit
+Stage 2 — Dependency Audit (govulncheck / osv-scanner)
       │
       ▼
-Policy Enforcement
+Stage 3 — Policy Enforcement (blocked imports/functions)
       │
       ▼
-Sandboxed Execution
+Stage 4 — Sandboxed Execution (isolated process)
       │
       ▼
-Security Score and Final Verdict
+Security Score (0–100) and Verdict
       │
       ▼
-CLI Report and Audit Log
+CLI Report and Audit Log (SQLite)
 ```
-
----
-
-## Architecture
-
-```text
-secure-ai-cli/
-├── cmd/
-│   └── secure-ai-cli/
-│       └── main.go
-│
-├── internal/
-│   ├── ai/
-│   │   ├── client.go
-│   │   └── prompt_engineer.go
-│   │
-│   ├── config/
-│   │   └── config.go
-│   │
-│   ├── verification/
-│   │   ├── analyzer.go
-│   │   ├── static_analyzer.go
-│   │   ├── dependency_auditor.go
-│   │   └── policy_engine.go
-│   │
-│   ├── sandbox/
-│   │   ├── firecracker_runner.go
-│   │   ├── process_runner.go
-│   │   └── resource_governor.go
-│   │
-│   ├── output/
-│   │   ├── reporter.go
-│   │   └── ui.go
-│   │
-│   ├── logger/
-│   │   └── logger.go
-│   │
-│   ├── database/
-│   │   └── sqlite.go
-│   │
-│   └── util/
-│       └── fs.go
-│
-├── pkg/
-│   └── security/
-│       └── types.go
-│
-├── test/
-├── go.mod
-├── go.sum
-├── README.md
-└── LICENSE
-```
-
----
-
-## Prerequisites
-
-### Required
-
-- Go 1.22 or later
-- Git
-
-### Optional Security Tools
-
-Install these tools if the corresponding integration is enabled:
-
-```bash
-# Go static security analysis
-go install github.com/securego/gosec/v2/cmd/gosec@latest
-
-# Go vulnerability scanning
-go install golang.org/x/vuln/cmd/govulncheck@latest
-
-# Multi-language dependency vulnerability scanning
-go install github.com/google/osv-scanner/cmd/osv-scanner@latest
-```
-
-### Optional Sandbox Runtime
-
-For strong isolation, configure one of the following:
-
-- [Firecracker](https://firecracker-microvm.github.io/)
-- [gVisor](https://gvisor.dev/)
-
-> Do not assume `os/exec`, Docker, or a simple subprocess is a secure sandbox. A local process runner may be useful for development, but it is not a production-grade boundary for hostile or untrusted code.
 
 ---
 
@@ -196,24 +129,48 @@ For strong isolation, configure one of the following:
 ### Build from Source
 
 ```bash
-git clone https://github.com/your-org/secure-ai-cli.git
-cd secure-ai-cli
+git clone https://github.com/jibankumarpanda/ElevateCLI.git
+cd ElevateCLI
 
-go mod download
-go build -o bin/secure-ai-cli ./cmd/secure-ai-cli
+go build -o bin/elevated-cli ./cmd/elevated-cli
 ```
 
 Verify the installation:
 
 ```bash
-./bin/secure-ai-cli --help
+./bin/elevated-cli --help
 ```
 
 ### Install with Go
 
 ```bash
-go install github.com/your-org/secure-ai-cli/cmd/secure-ai-cli@latest
+go install github.com/jibankumarpanda/ElevateCLI.0/cmd/elevated-cli@latest
 ```
+
+### Prerequisites
+
+- **Go 1.25 or later** (the module declares `go 1.25.0`)
+- Git
+
+### Optional Security Tools
+
+The pipeline calls these tools when their integration is enabled (all on by default). If a required binary is missing, the pipeline **fails closed** with an `ANALYSIS_INCOMPLETE` verdict rather than reporting a clean scan.
+
+```bash
+# Go static security analysis (Stage 1)
+go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+# Go vulnerability scanning (Stage 2)
+go install golang.org/x/vuln/cmd/govulncheck@latest
+
+# Multi-language dependency vulnerability scanning (Stage 2)
+go install github.com/google/osv-scanner/cmd/osv-scanner@latest
+```
+
+### Optional Sandbox Runtimes
+
+- For strong isolation, [Firecracker](https://firecracker-microvm.github.io/) and [gVisor](https://gvisor.dev/) are on the roadmap. Today the default is the built-in **process runner**.
+- The process runner uses restricted `os/exec`: strict timeout, temp-directory isolation, scrubbed environment, and process-group teardown. It is **not** a production-grade boundary for hostile code — do not treat it as a substitute for a real sandbox.
 
 ---
 
@@ -221,54 +178,65 @@ go install github.com/your-org/secure-ai-cli/cmd/secure-ai-cli@latest
 
 ### 1. Configure an AI Provider
 
-Create a configuration file:
+Create a config file (default search path: `.elevated-cli.yaml` in the current or home directory):
 
 ```bash
-mkdir -p ~/.config/secure-ai-cli
-touch ~/.config/secure-ai-cli/config.yaml
+touch .elevated-cli.yaml
 ```
 
 Example configuration:
 
 ```yaml
-provider:
-  type: openai
-  model: your-model-name
-  timeout_seconds: 60
+ai:
+  provider: openai        # openai | anthropic | local
+  model: gpt-4o
+  api_key: ""             # or set via SECURE_AI_AI_API_KEY / OPENAI_API_KEY
+  endpoint: http://localhost:11434   # used by local/Ollama
+  timeout_sec: 120
 
-security:
+sandbox:
+  mode: process           # process | firecracker | docker | skip
+  timeout_sec: 10
+  max_memory_mb: 256
+  block_network: true
+
+output:
+  format: rich            # rich | json | sarif | plain
+  show_code: false
+  audit_db: secure-ai.db  # SQLite path for scan history
+
+scoring:
+  sast_weight: 0.40
+  dep_weight: 0.30
+  policy_weight: 0.20
+  sandbox_weight: 0.10
+  pass_threshold: 70
   fail_closed: true
-  minimum_score: 80
-  allow_network: false
-  allow_host_execution: false
 
 analysis:
-  gosec: true
   govulncheck: true
   osv_scanner: true
   custom_ast_rules: true
 
-sandbox:
-  enabled: true
-  runtime: firecracker
-  timeout_seconds: 20
-  cpu_limit: 1
-  memory_limit_mb: 512
-  process_limit: 32
-  output_limit_kb: 256
-  network_mode: deny
-
-audit:
-  enabled: true
-  database_path: ~/.local/share/secure-ai-cli/audit.db
-  redact_prompts: true
-  redact_secrets: true
+policy:
+  file: .elevated-cli.yaml
+  rules:
+    blocked_imports:
+      - os/exec
+      - syscall
+      - unsafe
+      - net/http
+    blocked_functions:
+      - eval
+      - exec
+      - system
+    require_error_handling: true
 ```
 
 Set your API key through the environment:
 
 ```bash
-export OPENAI_API_KEY="your-api-key"
+export SECURE_AI_AI_API_KEY="your-api-key"
 ```
 
 > Never commit API keys, tokens, credentials, or local configuration files containing secrets.
@@ -276,34 +244,37 @@ export OPENAI_API_KEY="your-api-key"
 ### 2. Generate Code
 
 ```bash
-secure-ai-cli generate \
+elevated-cli generate \
   --prompt "Create a Go HTTP API with a health endpoint" \
-  --language go
+  --lang go
 ```
 
-### 3. Scan Existing Code
+### 3. Run Generated Code in the Sandbox
 
 ```bash
-secure-ai-cli scan ./example-project
+elevated-cli generate \
+  --prompt "read a CSV and print row count" \
+  --lang python \
+  --run
 ```
 
-### 4. Verify Generated Code
+### 4. Audit an Existing File or Directory
 
 ```bash
-secure-ai-cli verify \
-  --file ./generated/main.go \
-  --language go
+# Single file
+elevated-cli audit --file ./mycode.go
+
+# Whole directory (recursive, skips vendor/node_modules/hidden dirs)
+elevated-cli audit --dir ./src --lang python
 ```
 
-### 5. Run in a Configured Sandbox
+### 5. Browse Past Scans
 
 ```bash
-secure-ai-cli run \
-  --file ./generated/main.go \
-  --sandbox firecracker
+elevated-cli history --last 10
+elevated-cli history --date 2025-04-24
+elevated-cli history --id <scan-id>
 ```
-
-> The `run` command should fail closed when no approved sandbox runtime is configured. Never silently fall back to direct host execution.
 
 ---
 
@@ -311,247 +282,229 @@ secure-ai-cli run \
 
 | Command | Description |
 |---|---|
-| `generate` | Request code from a configured AI provider |
-| `scan` | Analyze an existing project or file |
-| `verify` | Run the full verification pipeline without execution |
-| `run` | Verify and execute code in an approved sandbox |
-| `policy` | Inspect, validate, or manage security policies |
-| `report` | View or export prior verification results |
-| `config` | View, validate, or initialize configuration |
-| `doctor` | Check required tools, configuration, and sandbox readiness |
+| `generate` | Generate code from an AI provider and run it through the security pipeline |
+| `audit` | Run the security pipeline on an existing file or directory |
+| `history` | Browse past scan results from the SQLite audit database |
+| `config` | View or modify ElevatedCLI configuration |
 
-Example help command:
+### Global Flags
+
+| Flag | Description |
+|---|---|
+| `--config <path>` | Explicit config file (default: `.elevated-cli.yaml` in home or current dir) |
+| `--output <format>` | Output format: `rich` \| `json` \| `sarif` \| `plain` |
+| `--no-sandbox` | Skip sandbox execution (faster, less safe) |
+| `--verbose` | Enable debug logging |
+
+### `generate`
 
 ```bash
-secure-ai-cli --help
-secure-ai-cli verify --help
-secure-ai-cli doctor
+elevated-cli generate --prompt "..." --lang go
 ```
+
+| Flag | Description |
+|---|---|
+| `-p, --prompt` | Natural-language description of the code to generate (required) |
+| `-l, --lang` | Target language: `go` \| `python` \| `javascript` \| `typescript` (default `go`) |
+| `-m, --model` | LLM model override (e.g. `gpt-4o`, `claude-3-5-sonnet-20241022`) |
+| `--sandbox` | Sandbox mode override: `firecracker` \| `process` \| `docker` |
+| `--run` | Execute generated code in the sandbox after verification |
+| `--dry-run` | Print the generated prompt without calling the LLM |
+| `-o, --output` | Output format: `rich` \| `json` \| `sarif` \| `plain` |
+
+### `audit`
+
+```bash
+elevated-cli audit --dir ./src
+```
+
+| Flag | Description |
+|---|---|
+| `-f, --file` | Path to a single file to audit |
+| `-d, --dir` | Path to a directory to audit recursively |
+| `-l, --lang` | Language override (auto-detected from extension if omitted) |
+| `-o, --output` | Output format: `rich` \| `json` \| `sarif` \| `plain` |
+
+### `history`
+
+```bash
+elevated-cli history --last 10
+```
+
+| Flag | Description |
+|---|---|
+| `-n, --last` | Number of recent scans to show (default 10) |
+| `-d, --date` | Filter by date (`YYYY-MM-DD`) |
+| `--id` | Show the full report for a specific scan ID |
+
+### `config`
+
+```bash
+elevated-cli config --show
+elevated-cli config --set ai.model=gpt-4o
+```
+
+| Flag | Description |
+|---|---|
+| `--show` | Print the current resolved configuration (default) |
+| `--set` | Set a config value: `key=value` |
 
 ---
 
 ## Verification Pipeline
 
-The CLI is designed to evaluate code through several stages.
+Every piece of code is evaluated through four stages. Stages 1–3 run in **parallel**; stage 4 (sandbox) runs after they complete.
 
-### 1. Syntax Validation
+### Stage 1 — Static Security Analysis (SAST)
 
-Before security scanning, the tool should:
+- **Go**: custom `go/ast` checks (hardcoded-secret detection, dangerous calls such as `exec.Command`, `os.Remove(All)`, `net.Dial`, `http.Get`, `ioutil.ReadFile`) plus `gosec`. If the `gosec` binary is missing, the stage returns an error and the pipeline **fails closed**.
+- **Python**: pattern checks for `eval(`, `exec(`, `os.system(`, `pickle.loads`, `subprocess.call(`, `shell=True`, hardcoded passwords.
+- **JavaScript/TypeScript**: pattern checks for `eval(`, `innerHTML`, `document.write(`, `dangerouslySetInnerHTML`, `process.env`.
+- **Other languages**: generic checks for hardcoded passwords/secrets and unresolved security TODOs.
 
-- Detect the generated language
-- Extract code from structured AI output
-- Validate syntax
-- Reject malformed or incomplete code
-- Prevent further execution if parsing fails
-
-### 2. Static Security Analysis
-
-For Go code, the tool can integrate with `gosec` and custom AST rules.
-
-Typical findings may include:
+Typical findings include:
 
 - Hardcoded secrets
 - Unsafe command execution
-- Weak cryptography
-- SQL-injection patterns
-- Unsafe file permissions
-- Path-traversal risks
-- Insecure random-number usage
+- SQL-injection patterns (`gosec` G201/G202)
+- Unsafe file permissions (`gosec` G301/G302/G306)
+- Path-traversal risks (`gosec` G304)
+- Unhandled errors (`gosec` G104)
 - Dangerous package imports
-- Unsafe deserialization
 
-### 3. Dependency Audit
+### Stage 2 — Dependency Audit
 
-The dependency auditor can inspect files such as:
+The dependency auditor extracts declared imports from the code and, when a project directory is available, scans lockfiles for known vulnerabilities.
+
+Supported lockfiles:
 
 ```text
-go.mod
-package.json
-package-lock.json
-requirements.txt
-pyproject.toml
-Cargo.toml
+go.mod  go.sum
+package-lock.json  npm-shrinkwrap.json  yarn.lock  pnpm-lock.yaml
+requirements.txt  Pipfile.lock  poetry.lock  pyproject.toml
+Cargo.lock  composer.lock  Gemfile.lock
 ```
 
-It can use:
+- `go.sum` files are skipped when a `go.mod` exists in the same directory (govulncheck already covers the module).
+- **govulncheck** scans Go modules; **osv-scanner** scans all lockfiles.
+- An enabled scanner whose binary is missing is a hard, fail-closed error: a missing scanner must never be reported as a clean scan.
+- When no lockfile exists (e.g. `generate` with no on-disk project), there is no version-resolved dependency set, so the CVE scan is skipped and logged rather than fabricated as clean.
 
-- `govulncheck` for Go modules
-- OSV-Scanner for multi-language dependency auditing
+### Stage 3 — Policy Enforcement
 
-### 4. Policy Enforcement
+Policies enforce project-specific security constraints. See [Security Policies](#security-policies) for the rule schema. Blocking rules are enforced before any sandbox execution.
 
-Policies allow teams to enforce project-specific security constraints.
+### Stage 4 — Isolated Execution
 
-Example policy rules:
+When sandboxing is enabled, code runs in an isolated, disposable environment:
 
-```yaml
-policies:
-  - id: no-shell-exec
-    severity: critical
-    action: block
-    description: Block direct shell or system command execution.
+- Temporary working directory (auto-cleaned after execution)
+- Language runners for Go, Python, Node.js, and TypeScript (`ts-node`)
+- Strict timeout enforcement (context deadline, default 10s)
+- Scrubbed environment (`HOME=/tmp`, fixed `PATH`, `TMPDIR=/tmp`) so user secrets are never passed through
+- Process-group management for clean teardown of the whole process tree
+- Code files are written with restrictive permissions (0600)
 
-  - id: no-hardcoded-secrets
-    severity: high
-    action: block
-    description: Prevent hardcoded API keys, passwords, and tokens.
-
-  - id: no-unrestricted-network
-    severity: high
-    action: block
-    description: Require explicit network allowlists.
-
-  - id: restricted-imports
-    severity: medium
-    action: warn
-    blocked_imports:
-      - os/exec
-      - syscall
-      - unsafe
-```
-
-### 5. Isolated Execution
-
-When sandboxing is enabled, generated code should run in an isolated, disposable environment with:
-
-- A temporary workspace
-- Restricted filesystem access
-- Dropped privileges
-- CPU and memory limits
-- Process limits
-- Timeout enforcement
-- Output-size limits
-- Network deny-by-default configuration
-- Restricted environment variables
-- Automatic cleanup after execution
+> **Limitations:** memory (`max_memory_mb`) and network (`block_network`) are currently configuration values only — they are not yet enforced at the syscall level by the process runner. `Firecracker` is supported on Linux but today falls back to the process runner. Treat the process runner as a development convenience, not a hostile-code boundary.
 
 ---
 
-## Security Score
+## Security Scoring
 
-The CLI can produce a score between `0` and `100`.
+The score is a deterministic, weighted sum of the four stage sub-scores:
 
-Example interpretation:
+```text
+final = SAST*sast_weight + Deps*dep_weight + Policy*policy_weight + Sandbox*sandbox_weight
+```
+
+Default weights (normalised if they do not sum to 1.0):
+
+| Weight | Default | Basis |
+|---:|---:|---|
+| `sast_weight` | 0.40 | 100 minus severity points per finding (CRITICAL 25 / HIGH 15 / MEDIUM 8 / LOW 3) |
+| `dep_weight` | 0.30 | 100 minus severity points per vulnerability |
+| `policy_weight` | 0.20 | 100 minus 20 per policy violation |
+| `sandbox_weight` | 0.10 | skipped 100 · not-executed 50 · failed 0 · succeeded 100 |
+
+### Verdicts
+
+The numeric score is advisory. The verdict is authoritative and **fail-closed**, evaluated in this order — a hard condition can never be overridden by a high score:
+
+| Priority | Condition | Verdict |
+|---|---|---|
+| 1 | Sandbox executed and failed | `EXECUTION_FAILED` |
+| 2 | Mandatory check could not complete (fail-closed) | `ANALYSIS_INCOMPLETE` |
+| 3 | Any CRITICAL finding or vulnerability | `BLOCKED` |
+| 4 | Score ≥ `pass_threshold` (default 70) | `APPROVED` |
+| 5 | Score 40–69 | `WARNING` |
+| 6 | Score < 40 | `REJECTED` |
 
 | Score | Verdict | Meaning |
 |---:|---|---|
-| 90–100 | `SAFE_WITH_REVIEW` | No critical findings; manual review is still recommended |
-| 70–89 | `WARNING` | Risks or incomplete checks require developer attention |
-| 40–69 | `HIGH_RISK` | Important security concerns were found |
-| 0–39 | `BLOCKED` | Critical issues or unsafe execution conditions |
-| N/A | `ANALYSIS_INCOMPLETE` | Required security checks could not complete |
+| 70–100 | `APPROVED` | No blocking issues; safe to use |
+| 40–69 | `WARNING` | Review findings before using |
+| 0–39 | `REJECTED` | Do not use |
+| — | `BLOCKED` | A critical finding/vulnerability is present |
+| — | `ANALYSIS_INCOMPLETE` | A mandatory check could not run (fail-closed) |
+| — | `EXECUTION_FAILED` | Code ran in the sandbox and failed at runtime |
 
-A score must never override a critical policy violation, failed sandbox setup, or incomplete mandatory analysis. In those cases, the final status should be `BLOCKED` or `ANALYSIS_INCOMPLETE`.
+`fail_closed` defaults to **true**: when a mandatory check cannot complete, the result is `ANALYSIS_INCOMPLETE` rather than a partial score that could be read as safe. Only an explicit `fail_closed: false` opts into fail-open (and even then the verdict can never be `APPROVED` when analysis is incomplete).
 
-Example output:
+Example report:
 
 ```text
-Secure AI Developer CLI — Verification Report
-
 Target: generated/main.go
 Language: Go
 Analysis ID: 8b7b9a2f
 
-Static analysis:      2 findings
-Dependency audit:     0 findings
-Policy violations:    1 critical
-Sandbox execution:    blocked
-Security score:       32 / 100
-Final verdict:        BLOCKED
+Stage scores:  SAST 100 · Deps 100 · Policy 60 · Sandbox —
+Security score: 88 / 100
+Final verdict: APPROVED
 
-Critical finding:
-  [POLICY-001] Shell execution is not allowed
-  File: generated/main.go:42
-  Rule: no-shell-exec
-  Recommendation: Remove os/exec usage or request explicit policy approval.
+Policy violation:
+  [BLOCKED_FUNCTION] Call to 'exec()' is blocked by security policy
+  File: generated_code.go:42
 ```
 
 ---
 
-## JSON Output
+## Output Formats
 
-Use JSON output for automation and CI/CD pipelines:
+Use JSON or SARIF for automation and CI/CD pipelines:
 
 ```bash
-secure-ai-cli verify \
-  --file ./generated/main.go \
-  --output json
+elevated-cli audit --dir ./src --output json | jq '.final_score'
+elevated-cli audit --dir ./src --output sarif
 ```
 
-Example response:
+Example JSON response:
 
 ```json
 {
-  "analysis_id": "8b7b9a2f",
-  "target": "./generated/main.go",
+  "id": "8b7b9a2f-...",
+  "timestamp": "2026-08-16T05:38:09Z",
   "language": "go",
-  "score": 32,
-  "verdict": "BLOCKED",
-  "analysis_complete": true,
-  "findings": [
+  "code_hash": "sha256...",
+  "findings": [],
+  "vulnerabilities": [],
+  "policy_violations": [
     {
-      "id": "POLICY-001",
-      "severity": "CRITICAL",
-      "category": "policy",
-      "file": "generated/main.go",
-      "line": 42,
-      "message": "Shell execution is not allowed.",
-      "remediation": "Remove os/exec usage or request policy approval."
+      "rule": "BLOCKED_FUNCTION",
+      "description": "Call to 'exec()' is blocked by security policy.",
+      "value": "exec"
     }
   ],
-  "sandbox": {
-    "attempted": false,
-    "reason": "Blocked by critical policy violation."
-  }
+  "sandbox": {"executed": false, "skipped": true, "mode": "none"},
+  "stage_scores": {"sast": 100, "deps": 100, "policy": 60, "sandbox": 100},
+  "final_score": 88,
+  "verdict": "APPROVED",
+  "analysis_complete": true,
+  "ai_provider": "openai",
+  "ai_model": "gpt-4o"
 }
 ```
 
----
-
-## CI/CD Integration
-
-Example GitHub Actions workflow:
-
-```yaml
-name: Secure AI Code Verification
-
-on:
-  pull_request:
-  push:
-    branches:
-      - main
-
-jobs:
-  secure-ai-scan:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.22.x"
-
-      - name: Install Secure AI CLI
-        run: go install github.com/your-org/secure-ai-cli/cmd/secure-ai-cli@latest
-
-      - name: Verify generated code
-        run: |
-          secure-ai-cli scan . \
-            --output json \
-            --fail-on medium
-```
-
-Recommended CI behavior:
-
-- Fail builds for critical findings
-- Fail builds if mandatory analysis is incomplete
-- Fail builds if policy enforcement is unavailable
-- Do not allow host execution in shared CI runners
-- Store JSON or SARIF reports as build artifacts
-- Upload SARIF reports to supported security dashboards
+SARIF 2.1.0 output is structured for GitHub Code Scanning dashboards.
 
 ---
 
@@ -561,8 +514,8 @@ Configuration can be supplied through:
 
 1. Command-line flags
 2. Environment variables
-3. Configuration file
-4. Secure secret manager integration
+3. Configuration file (`.elevated-cli.yaml`)
+4. Defaults
 
 Priority order:
 
@@ -570,15 +523,106 @@ Priority order:
 CLI Flags > Environment Variables > Config File > Defaults
 ```
 
-Example environment variables:
+Environment variables use the `SECURE_AI_` prefix with dots replaced by underscores:
 
 ```bash
-export SECURE_AI_PROVIDER_TYPE="openai"
-export SECURE_AI_PROVIDER_MODEL="your-model-name"
-export SECURE_AI_FAIL_CLOSED="true"
-export SECURE_AI_SANDBOX_RUNTIME="firecracker"
-export SECURE_AI_SANDBOX_NETWORK_MODE="deny"
+export SECURE_AI_AI_PROVIDER="openai"      # ai.provider
+export SECURE_AI_AI_MODEL="gpt-4o"         # ai.model
+export SECURE_AI_AI_API_KEY="..."          # ai.api_key
+export SECURE_AI_SANDBOX_MODE="process"    # sandbox.mode
+export SECURE_AI_SCORING_PASS_THRESHOLD="80"
+export SECURE_AI_ANALYSIS_OSV_SCANNER="true"
 ```
+
+### Schema
+
+| Key | Default | Description |
+|---|---|---|
+| `ai.provider` | `openai` | `openai` \| `anthropic` \| `local` |
+| `ai.model` | `gpt-4o` | Model name |
+| `ai.api_key` | `""` | API key (prefer env vars) |
+| `ai.endpoint` | `http://localhost:11434` | Endpoint for local/Ollama providers |
+| `ai.timeout_sec` | `120` | LLM call timeout |
+| `database.path` | `secure-ai.db` | SQLite database path |
+| `sandbox.mode` | `process` | `process` \| `firecracker` \| `docker` \| `skip` |
+| `sandbox.timeout_sec` | `10` | Execution timeout |
+| `sandbox.max_memory_mb` | `256` | Memory cap (config only today) |
+| `sandbox.block_network` | `true` | Network deny (config only today) |
+| `output.format` | `rich` | `rich` \| `json` \| `sarif` \| `plain` |
+| `output.show_code` | `false` | Include code snippets in reports |
+| `output.audit_db` | `secure-ai.db` | SQLite path for scan history |
+| `logger.level` | `info` | `debug` \| `info` \| `warn` \| `error` |
+| `logger.format` | `console` | `json` \| `console` |
+| `logger.file` | `""` | Optional log file |
+| `policy.file` | `.elevated-cli.yaml` | Policy rules file |
+| `scoring.sast_weight` | `0.40` | SAST stage weight |
+| `scoring.dep_weight` | `0.30` | Dependency stage weight |
+| `scoring.policy_weight` | `0.20` | Policy stage weight |
+| `scoring.sandbox_weight` | `0.10` | Sandbox stage weight |
+| `scoring.pass_threshold` | `70` | Score for `APPROVED` |
+| `scoring.fail_closed` | `true` | Fail closed on incomplete analysis |
+| `analysis.govulncheck` | `true` | Enable govulncheck scanning |
+| `analysis.osv_scanner` | `true` | Enable osv-scanner scanning |
+| `analysis.custom_ast_rules` | `true` | Enable custom AST checks |
+
+---
+
+## Security Policies
+
+Policies are defined in the `policy` section of `.elevated-cli.yaml`:
+
+```yaml
+policy:
+  file: .elevated-cli.yaml
+  rules:
+    blocked_imports:
+      - os/exec
+      - syscall
+      - unsafe
+      - net/http
+    blocked_functions:
+      - eval
+      - exec
+      - system
+    require_error_handling: true
+```
+
+Rules:
+
+| Rule | Behavior |
+|---|---|
+| `blocked_imports` | Blocklisted package paths. Go matches exact path or subpath (e.g. `os/exec` catches `os/exec/...`); other languages match on the line. |
+| `blocked_functions` | Blocked calls. Matches the bare function name (`Command`), the qualified call (`exec.Command`), or the package prefix (`exec`). |
+| `require_error_handling` | Flags Go code that discards errors with `_`. |
+| `max_cyclomatic_complexity` | Declared in the schema (default 15); complexity measurement is not yet enforced. |
+
+A critical policy violation or critical SAST finding forces a `BLOCKED` verdict regardless of the numeric score.
+
+---
+
+## Audit History
+
+Every pipeline run is stored in SQLite (schema migrations live in `internal/database/migrations`):
+
+```bash
+elevated-cli history --last 20
+elevated-cli history --date 2025-04-24
+elevated-cli history --id <scan-id>
+```
+
+Reports store the code as a SHA-256 hash plus provider, model, stage scores, verdict, and findings. Prompt text is stored for auditability — configure `logger` and review the stored fields if prompt redaction is required for your environment.
+
+---
+
+## Exit Codes
+
+| Exit Code | Meaning |
+|---:|---|
+| `0` | Success |
+| `1` | Error (invalid usage, pipeline failure, config error) |
+| `2` | A file was **rejected** (`REJECTED` verdict) |
+
+`generate` and `audit` exit with code `2` when the final verdict is `REJECTED`, so CI can gate on it.
 
 ---
 
@@ -601,9 +645,6 @@ The tool aims to reduce risk from:
 - Path traversal
 - Secret leakage
 - Unsafe dependency usage
-- Data exfiltration
-- Resource exhaustion
-- Network abuse
 - Policy bypasses
 - False-positive “safe” decisions
 
@@ -623,16 +664,58 @@ This project does not guarantee that code is secure. It cannot fully protect aga
 
 ## Security Principles
 
-Secure AI Developer CLI follows these principles:
+ElevatedCLI follows these principles:
 
 - **Fail closed:** If a required security control fails, block execution.
 - **Least privilege:** Sandboxed workloads receive minimal privileges.
 - **Deny by default:** Network access and dangerous operations require explicit approval.
-- **Defense in depth:** Use multiple layers—syntax checks, SAST, dependency scanning, policies, and sandboxing.
+- **Defense in depth:** Use multiple layers — syntax checks, SAST, dependency scanning, policies, and sandboxing.
 - **No direct host execution:** Untrusted code must not run directly on the developer machine or CI host.
 - **Auditability:** Record decisions, findings, and execution metadata.
-- **Secret protection:** Redact secrets from logs and reports.
-- **Deterministic policy decisions:** Policies must provide explainable results.
+- **Secret protection:** Redact secrets from logs and reports; subprocesses receive a scrubbed environment.
+- **Deterministic policy decisions:** Identical inputs always produce identical scores and verdicts.
+
+---
+
+## Architecture
+
+```text
+elevated-cli/
+├── cmd/
+│   └── elevated-cli/
+│       ├── main.go
+│       ├── version.go
+│       └── commands/
+│           ├── root.go        # root command, global flags, config/logger init
+│           ├── generate.go    # AI generation + pipeline
+│           ├── audit.go       # file/dir auditing + CVE scanning
+│           ├── history.go     # history + config commands
+│           └── common.go      # pipeline wiring, report printing
+│
+├── internal/
+│   ├── ai/                    # OpenAI, Anthropic, local/Ollama clients + prompt builder
+│   ├── config/                # Viper-based configuration loading
+│   ├── database/              # SQLite audit history + migrations
+│   ├── logger/                # zap structured logging
+│   ├── output/                # report formatters (rich/json/sarif/plain) + templates
+│   ├── sandbox/               # process_runner, firecracker_runner, resource_governor
+│   ├── security/              # pipeline, static_analyzer, dependency_auditor,
+│   │   │                      # policy_engine, scoring
+│   │   └── scoring/           # deterministic scoring algorithm
+│   └── utils/                 # filesystem helpers
+│
+├── pkg/
+│   └── security/              # shared types (Finding, Vulnerability, Verdict, Report…)
+│
+├── configs/                   # sample configs (default/development/enterprise/production)
+├── docs/                      # architecture, guides, and security documentation
+├── test/
+├── go.mod
+├── go.sum
+├── Makefile
+├── README.md
+└── LICENSE
+```
 
 ---
 
@@ -654,20 +737,37 @@ gofmt -l .
 ### Run Go Security Analysis
 
 ```bash
-gosec ./...
+gosec ./internal/... ./cmd/... ./pkg/...
 govulncheck ./...
 ```
 
 ### Build
 
 ```bash
-go build ./cmd/secure-ai-cli
+go build -o bin/elevated-cli ./cmd/elevated-cli
+```
+
+### Build with Version Info
+
+```bash
+go build -ldflags="-X main.Version=1.0.0 -X main.Commit=$(git rev-parse --short HEAD) -X main.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o bin/elevated-cli ./cmd/elevated-cli
 ```
 
 ### Run Locally
 
 ```bash
-go run ./cmd/secure-ai-cli --help
+go run ./cmd/elevated-cli --help
+```
+
+### Makefile
+
+```bash
+make build           # go build -o elevated-cli ./cmd/elevated-cli
+make build-release   # build with injected version/commit/date
+make test            # go test ./... -race -count=1 -v
+make gosec           # gosec ./...
+make vulncheck       # govulncheck ./...
+make all-checks      # fmt + vet + lint + test + gosec + vulncheck
 ```
 
 ---
@@ -690,28 +790,12 @@ Before considering a release ready, the project should include tests for:
 - Path traversal protection
 - Temporary-file cleanup
 - Timeout handling
-- CPU and memory limit behavior
-- Output-size limit behavior
-- Network denial behavior
 - Sandbox cleanup
 - Environment and secret isolation
-- Security-score calculation
+- Security-score calculation (including fail-closed verdicts)
 - Audit-log secret redaction
 - CLI exit codes
 - End-to-end verification flow
-
----
-
-## Exit Codes
-
-| Exit Code | Meaning |
-|---:|---|
-| `0` | Verification completed and no blocking findings were detected |
-| `1` | Blocking security finding or policy violation |
-| `2` | Invalid command usage or invalid input |
-| `3` | Required analysis tool unavailable or analysis incomplete |
-| `4` | Sandbox unavailable, failed, or unsafe configuration detected |
-| `5` | Internal application error |
 
 ---
 
@@ -719,35 +803,36 @@ Before considering a release ready, the project should include tests for:
 
 ### P0 — Required Before Untrusted Execution
 
-- [ ] Enforce fail-closed verification behavior
-- [ ] Prevent direct host execution
-- [ ] Implement verified sandbox isolation
-- [ ] Enforce timeout, memory, CPU, process, and output limits
-- [ ] Deny network access by default
-- [ ] Restrict filesystem and environment-variable access
-- [ ] Add path traversal and temporary-file protections
+- [x] Enforce fail-closed verification behavior
+- [x] Prevent direct host execution (no sandbox falls back to nothing)
+- [ ] Implement verified sandbox isolation (Firecracker/gVisor)
+- [ ] Enforce timeout, memory, CPU, process, and output limits (timeout done; memory/CPU/network pending)
+- [ ] Deny network access by default (config exists; syscall enforcement pending)
+- [ ] Restrict filesystem and environment-variable access (env scrubbing done; fs/namespace enforcement pending)
+- [ ] Add path traversal and temporary-file protections (temp-dir isolation and containment checks done)
 - [ ] Ensure secrets never appear in logs or reports
 
 ### P1 — Secure MVP
 
-- [ ] Cobra CLI commands and Viper configuration
-- [ ] LLM provider abstraction
-- [ ] Safe structured AI response parsing
-- [ ] Go syntax validation
-- [ ] `gosec` integration
-- [ ] `govulncheck` and OSV-Scanner integration
-- [ ] Configurable policy engine
-- [ ] Deterministic security scoring
-- [ ] Human-readable and JSON reports
-- [ ] Structured logging
-- [ ] SQLite audit storage
-- [ ] Unit and integration tests
+- [x] Cobra CLI commands and Viper configuration
+- [x] LLM provider abstraction
+- [x] Safe structured AI response parsing
+- [x] Go syntax validation
+- [x] `gosec` integration
+- [x] `govulncheck` and OSV-Scanner integration
+- [x] Configurable policy engine
+- [x] Deterministic security scoring
+- [x] Human-readable and JSON reports (plus SARIF/plain)
+- [x] Structured logging
+- [x] SQLite audit storage
+- [x] Unit and integration tests
 
 ### P2 — Production Hardening
 
-- [ ] Firecracker microVM support
+- [ ] Firecracker microVM support (stub currently falls back to process runner)
 - [ ] gVisor runtime support
-- [ ] SARIF reporting
+- [ ] Docker sandbox isolation
+- [ ] Enforce memory/CPU/network limits in the process runner
 - [ ] SBOM generation
 - [ ] Signed release binaries
 - [ ] Reproducible builds
@@ -814,6 +899,6 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Disclaimer
 
-Secure AI Developer CLI is a security-assistance tool, not a guarantee of secure software. Automated analysis can miss vulnerabilities, produce false positives, and depend on the reliability of external tools and sandbox runtimes.
+ElevatedCLI is a security-assistance tool, not a guarantee of secure software. Automated analysis can miss vulnerabilities, produce false positives, and depend on the reliability of external tools and sandbox runtimes.
 
 Always use code review, testing, dependency controls, least-privilege deployment, and appropriate security practices before deploying AI-generated code.

@@ -1,6 +1,7 @@
-APP_NAME=secure-ai
+APP_NAME=elevated-cli
 BINARY=./$(APP_NAME)
-CMD_PATH=./cmd/secure-ai-cli/
+CMD_PATH=./cmd/elevated-cli/
+BUILD_LDFLAGS=-s -w -X main.Version=1.0.0 -X main.Commit=$(shell git rev-parse --short HEAD 2>/dev/null || echo none) -X main.Date=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 .PHONY: build run test lint clean install fmt vet cross
 
@@ -10,7 +11,7 @@ build:
 
 # Build with version info
 build-release:
-	go build -ldflags="-s -w -X main.version=1.0.0" -o $(APP_NAME) $(CMD_PATH)
+	go build -ldflags="$(BUILD_LDFLAGS)" -o $(APP_NAME) $(CMD_PATH)
 
 # Run directly without building
 run:
