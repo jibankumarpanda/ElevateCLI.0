@@ -85,11 +85,14 @@ func (e *PolicyEngineImpl) checkGo(code string) ([]sec.PolicyViolation, error) {
 		case *ast.CallExpr:
 			callName := extractCallName(node)
 			qualified := extractQualifiedCallName(node)
+			lowerQualified := strings.ToLower(qualified)
 			for _, blocked := range e.cfg.Rules.BlockedFunctions {
-				// Match the bare function name ("Command") or the qualified
-				// call ("exec.Command"), so blocking "exec" also catches
-				// exec.Command(...).
-				if strings.EqualFold(callName, blocked) || strings.EqualFold(qualified, blocked) {
+				// Match the bare function name ("Command"), the full qualified
+				// call ("exec.Command"), or the package prefix ("exec"), so a
+				// block on "exec" catches every exec.* call.
+				if strings.EqualFold(callName, blocked) ||
+					strings.EqualFold(qualified, blocked) ||
+					strings.HasPrefix(lowerQualified, strings.ToLower(blocked)+".") {
 					violations = append(violations, sec.PolicyViolation{
 						Rule:        "BLOCKED_FUNCTION",
 						Description: fmt.Sprintf("Call to '%s()' is blocked by security policy.", blocked),
