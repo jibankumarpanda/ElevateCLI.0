@@ -9,14 +9,14 @@ import (
 )
 
 type Config struct {
-	AI       AIConfig        `mapstructure:"ai"`
-	Database DatabaseConfig  `mapstructure:"database"`
-	Sandbox  SandboxConfig   `mapstructure:"sandbox"`
-	Output   OutputConfig    `mapstructure:"output"`
-	Logger   LoggerConfig    `mapstructure:"logger"`
-	Policy   PolicyConfig    `mapstructure:"policy"`
-	Scoring  ScoringConfig   `mapstructure:"scoring"`
-	Analysis AnalysisConfig  `mapstructure:"analysis"`
+	AI       AIConfig       `mapstructure:"ai"`
+	Database DatabaseConfig `mapstructure:"database"`
+	Sandbox  SandboxConfig  `mapstructure:"sandbox"`
+	Output   OutputConfig   `mapstructure:"output"`
+	Logger   LoggerConfig   `mapstructure:"logger"`
+	Policy   PolicyConfig   `mapstructure:"policy"`
+	Scoring  ScoringConfig  `mapstructure:"scoring"`
+	Analysis AnalysisConfig `mapstructure:"analysis"`
 }
 
 // AIConfig configures the LLM provider used for code generation.

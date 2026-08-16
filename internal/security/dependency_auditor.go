@@ -333,10 +333,10 @@ type osvScannerOutput struct {
 				Ecosystem string `json:"ecosystem"`
 			} `json:"package"`
 			Vulnerabilities []struct {
-				ID      string   `json:"id"`
-				Aliases []string `json:"aliases"`
-				Summary string   `json:"summary"`
-				Details string   `json:"details"`
+				ID       string   `json:"id"`
+				Aliases  []string `json:"aliases"`
+				Summary  string   `json:"summary"`
+				Details  string   `json:"details"`
 				Severity []struct {
 					Type  string `json:"type"`
 					Score string `json:"score"`

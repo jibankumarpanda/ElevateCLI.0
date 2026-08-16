@@ -157,14 +157,14 @@ func printConfig() {
 	gray := color.New(color.FgHiBlack)
 	cyan := color.New(color.FgCyan)
 
-	bold.Println("\n  ElevatedCLI — Current Configuration")
+	_, _ = bold.Println("\n  ElevatedCLI — Current Configuration")
 
 	section := func(name string) {
-		gray.Printf("  ── %s\n", name)
+		_, _ = gray.Printf("  ── %s\n", name)
 	}
 	row := func(key, val string) {
 		fmt.Printf("  %-35s ", key)
-		cyan.Println(val)
+		_, _ = cyan.Println(val)
 	}
 
 	section("AI")
