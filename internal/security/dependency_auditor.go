@@ -296,6 +296,11 @@ func runOSVScanner(ctx context.Context, lockfilePath string) ([]sec.Vulnerabilit
 	if err != nil {
 		return nil, fmt.Errorf("resolving lockfile path %q: %w", lockfilePath, err)
 	}
+	// #nosec G204 -- lockfilePath is produced by findLockfiles while walking a
+	// user-supplied directory. It is cleaned, resolved, and reduced to its
+	// basename, with cmd.Dir anchoring the process to the parent directory;
+	// the basename cannot contain a path separator and is the value of the
+	// --lockfile flag, so it can never be parsed as an option.
 	cmd := exec.CommandContext(ctx, "osv-scanner", "scan", "--format", "json", "--lockfile", filepath.Base(absPath))
 	cmd.Dir = filepath.Dir(absPath)
 
