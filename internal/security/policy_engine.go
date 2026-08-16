@@ -166,6 +166,9 @@ func (e *PolicyEngineImpl) checkGeneric(code, language string) []sec.PolicyViola
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 func extractCallName(call *ast.CallExpr) string {
+	if call == nil {
+		return ""
+	}
 	switch f := call.Fun.(type) {
 	case *ast.Ident:
 		return f.Name
