@@ -104,13 +104,10 @@ func TestLoadInvalidYAML(t *testing.T) {
 	}
 }
 
-func TestLoadMissingFileUsesDefaults(t *testing.T) {
-	cfg, err := Load(filepath.Join(t.TempDir(), "does-not-exist.yaml"))
-	if err != nil {
-		t.Fatalf("Load on missing file: %v", err)
-	}
-	if cfg.AI.Provider != "openai" {
-		t.Errorf("expected defaults, got provider %q", cfg.AI.Provider)
+func TestLoadMissingExplicitFileErrors(t *testing.T) {
+	// An explicitly requested config file that does not exist is a user error.
+	if _, err := Load(filepath.Join(t.TempDir(), "does-not-exist.yaml")); err == nil {
+		t.Error("Load on a missing explicit config file should error")
 	}
 }
 

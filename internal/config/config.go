@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -163,6 +164,8 @@ func Load(cfgFile string) (*Config, error) {
 	// Environment variables
 	v.AutomaticEnv()
 	v.SetEnvPrefix("SECURE_AI")
+	// Map nested keys (ai.provider -> SECURE_AI_AI_PROVIDER) to env vars.
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
