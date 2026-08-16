@@ -9,7 +9,10 @@ import (
 // Exists checks if a file or directory exists at the given path.
 func Exists(path string) bool {
 	_, err := os.Stat(path)
-	return !os.IsNotExist(err)
+	// Only a successful stat proves the path exists. Any error (including
+	// ENOTDIR, where an intermediate component is a regular file) means the
+	// path does not resolve to an existing entry.
+	return err == nil
 }
 
 // EnsureDir checks if a directory exists, and creates it if it doesn't.
