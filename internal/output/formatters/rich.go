@@ -62,7 +62,7 @@ func PrintRich(w io.Writer, r *sec.Report, showCode bool) error {
 
 func printHeader(w io.Writer, r *sec.Report) {
 	fmt.Fprintf(w, "\n")
-	bold.Fprintf(w, "  ElevatedCLI Security Report\n")
+	_, _ = bold.Fprintf(w, "  ElevatedCLI Security Report\n")
 	gray.Fprintf(w, "  Scan ID : %s\n", r.ID)
 	gray.Fprintf(w, "  Provider: %s / %s\n", r.AIProvider, r.AIModel)
 	gray.Fprintf(w, "  Language: %s\n", r.Language)
@@ -93,11 +93,11 @@ func printScoreBar(w io.Writer, r *sec.Report) {
 	fmt.Fprintf(w, "  Security Score  ")
 	switch {
 	case score >= 70:
-		green.Fprintf(w, "%3d/100", score)
+		_, _ = green.Fprintf(w, "%3d/100", score)
 	case score >= 40:
-		yellow.Fprintf(w, "%3d/100", score)
+		_, _ = yellow.Fprintf(w, "%3d/100", score)
 	default:
-		red.Fprintf(w, "%3d/100", score)
+		_, _ = red.Fprintf(w, "%3d/100", score)
 	}
 	fmt.Fprintf(w, "  [%s]\n\n", bar.String())
 }
@@ -124,16 +124,16 @@ func printStageScores(w io.Writer, r *sec.Report) {
 func scoreColor(w io.Writer, score int) {
 	switch {
 	case score >= 70:
-		green.Fprintf(w, "%3d", score)
+		_, _ = green.Fprintf(w, "%3d", score)
 	case score >= 40:
-		yellow.Fprintf(w, "%3d", score)
+		_, _ = yellow.Fprintf(w, "%3d", score)
 	default:
-		red.Fprintf(w, "%3d", score)
+		_, _ = red.Fprintf(w, "%3d", score)
 	}
 }
 
 func printFindings(w io.Writer, findings []sec.Finding) {
-	bold.Fprintf(w, "  Static Analysis Findings (%d)\n", len(findings))
+	_, _ = bold.Fprintf(w, "  Static Analysis Findings (%d)\n", len(findings))
 	fmt.Fprintf(w, "\n")
 	for _, f := range findings {
 		severityBadge(w, f.Severity)
@@ -146,20 +146,20 @@ func printFindings(w io.Writer, findings []sec.Finding) {
 			gray.Fprintf(w, "     Code: %s\n", f.Code)
 		}
 		if f.Suggestion != "" {
-			cyan.Fprintf(w, "     Fix:  %s\n", f.Suggestion)
+			_, _ = cyan.Fprintf(w, "     Fix:  %s\n", f.Suggestion)
 		}
 		fmt.Fprintf(w, "\n")
 	}
 }
 
 func printVulns(w io.Writer, vulns []sec.Vulnerability) {
-	bold.Fprintf(w, "  Vulnerable Dependencies (%d)\n", len(vulns))
+	_, _ = bold.Fprintf(w, "  Vulnerable Dependencies (%d)\n", len(vulns))
 	fmt.Fprintf(w, "\n")
 	for _, v := range vulns {
 		severityBadge(w, v.Severity)
 		fmt.Fprintf(w, "  %s @ %s — %s\n", v.Package, v.Version, v.ID)
 		if v.FixedVersion != "" {
-			cyan.Fprintf(w, "     Fix: upgrade to %s\n", v.FixedVersion)
+			_, _ = cyan.Fprintf(w, "     Fix: upgrade to %s\n", v.FixedVersion)
 		}
 		if v.Description != "" {
 			gray.Fprintf(w, "     %s\n", v.Description)
@@ -169,10 +169,10 @@ func printVulns(w io.Writer, vulns []sec.Vulnerability) {
 }
 
 func printViolations(w io.Writer, violations []sec.PolicyViolation) {
-	bold.Fprintf(w, "  Policy Violations (%d)\n", len(violations))
+	_, _ = bold.Fprintf(w, "  Policy Violations (%d)\n", len(violations))
 	fmt.Fprintf(w, "\n")
 	for _, v := range violations {
-		red.Fprintf(w, "  [POLICY]")
+		_, _ = red.Fprintf(w, "  [POLICY]")
 		fmt.Fprintf(w, "  %s", v.Description)
 		if v.Line > 0 {
 			gray.Fprintf(w, " (line %d)", v.Line)
@@ -183,15 +183,15 @@ func printViolations(w io.Writer, violations []sec.PolicyViolation) {
 }
 
 func printSandbox(w io.Writer, s sec.SandboxResult) {
-	bold.Fprintf(w, "  Sandbox Execution\n")
+	_, _ = bold.Fprintf(w, "  Sandbox Execution\n")
 	fmt.Fprintf(w, "\n")
 	fmt.Fprintf(w, "  Mode    : %s\n", s.Mode)
 	fmt.Fprintf(w, "  Duration: %s\n", s.Duration.Round(1e6))
 
 	if s.Success {
-		green.Fprintf(w, "  Result  : PASS\n")
+		_, _ = green.Fprintf(w, "  Result  : PASS\n")
 	} else {
-		red.Fprintf(w, "  Result  : FAIL\n")
+		_, _ = red.Fprintf(w, "  Result  : FAIL\n")
 	}
 	if s.Stdout != "" {
 		gray.Fprintf(w, "\n  Output:\n")
@@ -203,7 +203,7 @@ func printSandbox(w io.Writer, s sec.SandboxResult) {
 }
 
 func printCode(w io.Writer, code, lang string) {
-	bold.Fprintf(w, "  Generated Code (%s)\n\n", lang)
+	_, _ = bold.Fprintf(w, "  Generated Code (%s)\n\n", lang)
 	for _, line := range strings.Split(code, "\n") {
 		gray.Fprintf(w, "  │ %s\n", line)
 	}
@@ -235,9 +235,9 @@ func severityBadge(w io.Writer, s sec.Severity) {
 	case sec.SeverityCritical:
 		bgRed.Fprintf(w, " CRITICAL ")
 	case sec.SeverityHigh:
-		red.Fprintf(w, " [HIGH]   ")
+		_, _ = red.Fprintf(w, " [HIGH]   ")
 	case sec.SeverityMedium:
-		yellow.Fprintf(w, " [MEDIUM] ")
+		_, _ = yellow.Fprintf(w, " [MEDIUM] ")
 	case sec.SeverityLow:
 		white.Fprintf(w, " [LOW]    ")
 	default:
