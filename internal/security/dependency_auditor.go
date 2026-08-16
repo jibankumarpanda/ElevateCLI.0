@@ -289,7 +289,15 @@ func parseGovulncheck(out []byte) ([]sec.Vulnerability, error) {
 // ─── osv-scanner integration (multi-language) ─────────────────────────────────
 
 func runOSVScanner(ctx context.Context, lockfilePath string) ([]sec.Vulnerability, error) {
-	cmd := exec.CommandContext(ctx, "osv-scanner", "scan", "--format", "json", "--lockfile", lockfilePath)
+	// Scope the lockfile to its own directory: the subprocess receives only a
+	// basename while cmd.Dir anchors it, so a crafted path can never be parsed
+	// as a flag by osv-scanner.
+	absPath, err := filepath.Abs(filepath.Clean(lockfilePath))
+	if err != nil {
+		return nil, fmt.Errorf("resolving lockfile path %q: %w", lockfilePath, err)
+	}
+	cmd := exec.CommandContext(ctx, "osv-scanner", "scan", "--format", "json", "--lockfile", filepath.Base(absPath))
+	cmd.Dir = filepath.Dir(absPath)
 
 	// osv-scanner writes progress to stderr; JSON results to stdout only.
 	// CombinedOutput would interleave them and corrupt the JSON.

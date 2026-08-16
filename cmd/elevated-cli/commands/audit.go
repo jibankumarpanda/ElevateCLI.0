@@ -64,7 +64,9 @@ func newAuditCmd() *cobra.Command {
 
 			var rejected int
 			for _, f := range files {
-				code, err := os.ReadFile(f)
+				// #nosec G304 -- auditing a user-specified file is the feature;
+				// paths come from --file/--dir CLI arguments, not file contents.
+				code, err := os.ReadFile(filepath.Clean(f))
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "⚠  Skipping %s: %v\n", f, err)
 					continue

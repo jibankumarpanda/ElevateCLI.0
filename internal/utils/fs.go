@@ -15,7 +15,7 @@ func Exists(path string) bool {
 // EnsureDir checks if a directory exists, and creates it if it doesn't.
 func EnsureDir(path string) error {
 	if !Exists(path) {
-		err := os.MkdirAll(path, 0755)
+		err := os.MkdirAll(path, 0750)
 		if err != nil {
 			return fmt.Errorf("failed to create directory %s: %w", path, err)
 		}
@@ -25,7 +25,9 @@ func EnsureDir(path string) error {
 
 // ReadFileContent reads the entire content of a file and returns it as a string.
 func ReadFileContent(path string) (string, error) {
-	content, err := os.ReadFile(path)
+	// #nosec G304 -- intentional generic file-read helper; the path comes from
+	// the caller (config paths, CLI args), not from untrusted file contents.
+	content, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return "", fmt.Errorf("failed to read file %s: %w", path, err)
 	}
@@ -38,5 +40,5 @@ func WriteFileContent(path string, content string) error {
 	if err := EnsureDir(dir); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(content), 0644)
+	return os.WriteFile(filepath.Clean(path), []byte(content), 0600)
 }
