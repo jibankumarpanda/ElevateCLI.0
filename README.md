@@ -1,20 +1,28 @@
 # ElevatedCLI
 
-> Generate, verify, and safely test AI-generated code from the terminal.
+> Generate, inspect, and verify AI-generated code from the terminal.
 
-[![Go Version](https://img.shields.io/badge/go-1.25-blue.svg)](https://golang.org)
-[![Security Scale](https://img.shields.io/badge/security-0--100-green.svg)](#security-scoring)
+[![Go Version](https://img.shields.io/badge/go-1.25-blue.svg)](https://go.dev/)
+[![Security Score](https://img.shields.io/badge/security--score-0--100-green.svg)](#security-scoring)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-`elevated-cli` is a Go-based CLI that generates code through supported LLM providers, then runs every result through a **4-stage security pipeline** (static analysis → dependency audit → policy enforcement → sandboxed execution) before showing you a verdict and a deterministic **security score (0–100)**.
+`elevated-cli` is a Go-based command-line tool that generates code through supported LLM providers and runs the result through a multi-stage verification pipeline:
+
+```text
+Static analysis → Dependency audit → Policy enforcement → Controlled execution
+```
+
+It produces an explainable verdict, a deterministic security score from 0–100, machine-readable reports, and a local audit trail.
 
 ```text
 Generate code faster.
-Verify code before trusting it.
-Never execute untrusted code directly on the host.
+Inspect and verify it before use.
+Use hardened isolation before executing untrusted code.
 ```
 
-> ⚠️ **Security notice:** AI-generated code is untrusted input. Static analysis and security scores reduce risk but do not guarantee that code is safe. Do not execute generated code on your local machine, CI runner, or production environment without verified sandbox isolation and restrictive execution controls.
+> 🚧 **Project status: Beta / development.** ElevatedCLI provides automated verification and controlled local execution. It is not production-ready for hostile or untrusted code until hardened isolation and enforced CPU, memory, filesystem, process, and network controls are implemented and tested.
+
+> ⚠️ **Security notice:** AI-generated code is untrusted input. Static analysis, dependency scans, policies, scores, and controlled execution reduce risk; they do not prove that code is secure. Do not execute untrusted code on a developer machine, shared CI runner, or production environment without a verified hardened isolation runtime.
 
 ---
 
@@ -30,7 +38,11 @@ Never execute untrusted code directly on the host.
 - [Output Formats](#output-formats)
 - [Configuration](#configuration)
 - [Security Policies](#security-policies)
+- [Audit Data and Privacy](#audit-data-and-privacy)
 - [Audit History](#audit-history)
+- [Platform Support](#platform-support)
+- [Language Support](#language-support)
+- [External Tool Compatibility](#external-tool-compatibility)
 - [Exit Codes](#exit-codes)
 - [Threat Model](#threat-model)
 - [Security Principles](#security-principles)
@@ -41,6 +53,7 @@ Never execute untrusted code directly on the host.
 - [Contributing](#contributing)
 - [Responsible Disclosure](#responsible-disclosure)
 - [License](#license)
+- [Disclaimer](#disclaimer)
 
 ---
 
@@ -48,79 +61,128 @@ Never execute untrusted code directly on the host.
 
 ### Implemented
 
-- Go-based CLI (`elevated-cli`) with Cobra commands and Viper configuration
-- AI provider abstraction: **OpenAI**, **Anthropic**, and **local/Ollama** endpoints
-- Prompt-to-code generation with markdown code-block extraction
-- **4-stage security pipeline** (see [below](#verification-pipeline)):
-  1. Static analysis — `gosec` (Go) plus custom `go/ast` and pattern-based checks
-  2. Dependency audit — `govulncheck` (Go) and `osv-scanner` (multi-language lockfiles)
-  3. Policy enforcement — configurable blocked imports/functions and error-handling rules
-  4. Sandboxed execution — isolated process runner with timeout and environment scrubbing
-- Deterministic security scoring (0–100) with fail-closed verdicts
-- Report formats: **rich** (terminal), **json**, **sarif**, **plain**
-- Structured logging (console or JSON) via `zap`
-- SQLite audit history (`history` command)
-- `audit` command for existing files/directories, including CVE scanning of lockfiles
-- `config` command to inspect or modify configuration
-- GitHub Actions CI/CD integration via JSON/SARIF output
+- Go-based CLI named `elevated-cli`
+- Cobra commands and Viper configuration
+- AI-provider abstraction for:
+  - OpenAI
+  - Anthropic
+  - Local/Ollama-compatible endpoints
+- Prompt-to-code generation with Markdown code-block extraction
+- Security verification pipeline:
+  1. Static analysis using `gosec`, Go AST rules, and language-specific patterns
+  2. Dependency auditing using `govulncheck` and `osv-scanner`
+  3. Configurable policy enforcement for blocked imports, functions, and error handling
+  4. Controlled process execution using Go `os/exec`
+- Deterministic 0–100 security scoring
+- Fail-closed handling for configured mandatory scanner failures
+- Report formats:
+  - Rich terminal output
+  - JSON
+  - SARIF
+  - Plain text
+- Structured console or JSON logging using `zap`
+- SQLite-backed local scan history
+- Existing-file and directory auditing
+- Config inspection and updates
+- CI-friendly JSON and SARIF reports
 
-### Planned (not yet implemented)
+### Current Execution Limitations
 
-- Firecracker microVM and gVisor isolation (the process runner is the current default)
-- Docker-based sandbox isolation
-- Memory, CPU, and network enforcement inside the process runner (config exists; limits are not yet applied at the syscall level)
+The current process runner provides **controlled host-process execution**, not a production-grade security sandbox.
+
+It may provide:
+
+- Temporary working-directory creation and cleanup
+- Restricted generated-code file permissions
+- Timeout handling
+- Scrubbed environment variables
+- Process-group termination for child-process cleanup
+
+It does **not** provide a hardened isolation boundary against hostile code. In particular, it does not currently provide verified enforcement of:
+
+- Hardware virtualization or a microVM boundary
+- Container or user-namespace isolation
+- Kernel-level filesystem isolation
+- Syscall filtering
+- CPU limits
+- Memory limits
+- Process-count limits
+- Network-deny enforcement
+- Prevention of kernel-level, host-level, or same-user attacks
+
+> The process runner is intended only for controlled local development. Do not treat it as a sandbox for malicious or fully untrusted code.
+
+### Planned
+
+- Firecracker microVM execution
+- gVisor execution support
+- No-fallback hardened sandbox selection
+- Runtime-enforced CPU, memory, process, output, filesystem, and network limits
 - SBOM generation
-- Signed release binaries and reproducible builds
-- CI security gates (exit-code contract only today)
-- Policy bundles and versioning
+- Signed releases
+- Reproducible builds
+- CI security-gate integration
+- Policy bundles and policy versioning
 - Audit retention controls
 - Metrics and observability
+- Stronger multi-language parsers and analyzers
+- Plugin architecture for additional analyzers
 
-> Features listed as **planned** must not be treated as available until they are implemented, tested, and documented in the release notes.
+> Planned features must not be treated as available until implemented, tested, and included in a release.
 
 ---
 
 ## How It Works
 
-AI coding tools can accelerate development, but generated code can contain:
+AI coding tools can accelerate development, but generated code may contain:
 
 - Hardcoded credentials and API keys
 - SQL injection and command-injection risks
 - Unsafe package imports
 - Vulnerable third-party dependencies
 - Insecure deserialization
-- Unsafe shell or process execution
-- Logic errors that static analysis may not detect
+- Dangerous shell or process execution
+- Unsafe filesystem access
+- Excessive permissions
+- Unrestricted network access
+- Logic flaws that automated scanners cannot detect
 
-ElevatedCLI places verification between AI generation and any use of the code:
+ElevatedCLI places verification between AI generation and any decision to use or execute generated code:
 
 ```text
 Developer Prompt
       │
       ▼
-AI Code Generation (OpenAI / Anthropic / Ollama)
+AI Code Generation
+(OpenAI / Anthropic / Ollama)
       │
       ▼
 Code Extraction and Syntax Validation
       │
       ▼
-Stage 1 — Static Analysis (gosec + AST + patterns)
+Stage 1 — Static Analysis
+(gosec + Go AST + language patterns)
       │
       ▼
-Stage 2 — Dependency Audit (govulncheck / osv-scanner)
+Stage 2 — Dependency Audit
+(govulncheck / osv-scanner)
       │
       ▼
-Stage 3 — Policy Enforcement (blocked imports/functions)
+Stage 3 — Policy Enforcement
+(blocked imports, calls, and project rules)
       │
       ▼
-Stage 4 — Sandboxed Execution (isolated process)
+Stage 4 — Controlled Process Execution
+(optional; development mode only)
       │
       ▼
-Security Score (0–100) and Verdict
+Security Score and Verdict
       │
       ▼
-CLI Report and Audit Log (SQLite)
+Terminal / JSON / SARIF Report + SQLite Audit History
 ```
+
+Stages 1–3 may run in parallel. Execution is performed only after verification reaches the execution step and should not occur when a blocking condition is found.
 
 ---
 
@@ -135,7 +197,7 @@ cd ElevateCLI
 go build -o bin/elevated-cli ./cmd/elevated-cli
 ```
 
-Verify the installation:
+Verify the binary:
 
 ```bash
 ./bin/elevated-cli --help
@@ -143,42 +205,53 @@ Verify the installation:
 
 ### Install with Go
 
+> Confirm that the module path below matches your `go.mod` before publishing.
+
 ```bash
-go install github.com/jibankumarpanda/ElevateCLI.0/cmd/elevated-cli@latest
+go install github.com/jibankumarpanda/ElevateCLI/cmd/elevated-cli@latest
 ```
 
 ### Prerequisites
 
-- **Go 1.25 or later** (the module declares `go 1.25.0`)
+- Go 1.25 or later
 - Git
+- Optional language runtimes for execution:
+  - Python for Python code
+  - Node.js for JavaScript code
+  - `ts-node` for TypeScript code
 
 ### Optional Security Tools
 
-The pipeline calls these tools when their integration is enabled (all on by default). If a required binary is missing, the pipeline **fails closed** with an `ANALYSIS_INCOMPLETE` verdict rather than reporting a clean scan.
+The following tools are used when their corresponding integrations are enabled. Under fail-closed configuration, a required tool that is unavailable should produce an `ANALYSIS_INCOMPLETE` result rather than a clean result.
 
 ```bash
-# Go static security analysis (Stage 1)
+# Go static security analysis
 go install github.com/securego/gosec/v2/cmd/gosec@latest
 
-# Go vulnerability scanning (Stage 2)
+# Go vulnerability scanning
 go install golang.org/x/vuln/cmd/govulncheck@latest
 
-# Multi-language dependency vulnerability scanning (Stage 2)
+# Multi-language dependency vulnerability scanning
 go install github.com/google/osv-scanner/cmd/osv-scanner@latest
 ```
 
-### Optional Sandbox Runtimes
+### Hardened Sandbox Runtimes
 
-- For strong isolation, [Firecracker](https://firecracker-microvm.github.io/) and [gVisor](https://gvisor.dev/) are on the roadmap. Today the default is the built-in **process runner**.
-- The process runner uses restricted `os/exec`: strict timeout, temp-directory isolation, scrubbed environment, and process-group teardown. It is **not** a production-grade boundary for hostile code — do not treat it as a substitute for a real sandbox.
+Firecracker and gVisor are planned hardened execution backends.
+
+- Firecracker provides Linux microVM-based isolation.
+- gVisor provides an additional isolation layer for containerized workloads.
+- The current `os/exec` process runner is **not** a substitute for either.
+
+If a future configuration requests Firecracker or gVisor but the runtime is unavailable, ElevatedCLI should fail closed rather than silently falling back to host process execution.
 
 ---
 
 ## Quick Start
 
-### 1. Configure an AI Provider
+### 1. Create a Configuration File
 
-Create a config file (default search path: `.elevated-cli.yaml` in the current or home directory):
+ElevatedCLI searches for `.elevated-cli.yaml` in the current directory or home directory unless `--config` is supplied.
 
 ```bash
 touch .elevated-cli.yaml
@@ -188,22 +261,24 @@ Example configuration:
 
 ```yaml
 ai:
-  provider: openai        # openai | anthropic | local
+  provider: openai # openai | anthropic | local
   model: gpt-4o
-  api_key: ""             # or set via SECURE_AI_AI_API_KEY / OPENAI_API_KEY
-  endpoint: http://localhost:11434   # used by local/Ollama
+  api_key: "" # Prefer environment variables instead
+  endpoint: http://localhost:11434
   timeout_sec: 120
 
 sandbox:
-  mode: process           # process | firecracker | docker | skip
+  mode: process # process | firecracker | docker | skip
   timeout_sec: 10
-  max_memory_mb: 256
-  block_network: true
+  max_memory_mb: 256 # Configuration only until runtime enforcement exists
+  block_network: true # Configuration only until runtime enforcement exists
+
+database:
+  path: secure-ai.db
 
 output:
-  format: rich            # rich | json | sarif | plain
+  format: rich # rich | json | sarif | plain
   show_code: false
-  audit_db: secure-ai.db  # SQLite path for scan history
 
 scoring:
   sast_weight: 0.40
@@ -219,7 +294,6 @@ analysis:
   custom_ast_rules: true
 
 policy:
-  file: .elevated-cli.yaml
   rules:
     blocked_imports:
       - os/exec
@@ -233,15 +307,15 @@ policy:
     require_error_handling: true
 ```
 
-Set your API key through the environment:
+Set API credentials through environment variables:
 
 ```bash
 export SECURE_AI_AI_API_KEY="your-api-key"
 ```
 
-> Never commit API keys, tokens, credentials, or local configuration files containing secrets.
+> Never commit API keys, credentials, tokens, `.env` files, or personal configuration files to source control.
 
-### 2. Generate Code
+### 2. Generate and Verify Code
 
 ```bash
 elevated-cli generate \
@@ -249,26 +323,28 @@ elevated-cli generate \
   --lang go
 ```
 
-### 3. Run Generated Code in the Sandbox
+### 3. Request Controlled Local Execution
 
 ```bash
 elevated-cli generate \
-  --prompt "read a CSV and print row count" \
+  --prompt "Read a CSV file and print the row count" \
   --lang python \
   --run
 ```
 
-### 4. Audit an Existing File or Directory
+> `--run` may execute code through the current host process runner. Use it only for code you are willing to run in a controlled local-development environment. It is not safe for hostile or unknown code.
+
+### 4. Audit Existing Code
 
 ```bash
-# Single file
+# Audit a single file
 elevated-cli audit --file ./mycode.go
 
-# Whole directory (recursive, skips vendor/node_modules/hidden dirs)
+# Audit a directory recursively
 elevated-cli audit --dir ./src --lang python
 ```
 
-### 5. Browse Past Scans
+### 5. View Audit History
 
 ```bash
 elevated-cli history --last 10
@@ -282,18 +358,18 @@ elevated-cli history --id <scan-id>
 
 | Command | Description |
 |---|---|
-| `generate` | Generate code from an AI provider and run it through the security pipeline |
-| `audit` | Run the security pipeline on an existing file or directory |
-| `history` | Browse past scan results from the SQLite audit database |
-| `config` | View or modify ElevatedCLI configuration |
+| `generate` | Generate code from an AI provider and verify it through the pipeline |
+| `audit` | Verify an existing file or directory |
+| `history` | Browse previous audit reports stored in SQLite |
+| `config` | Display or modify ElevatedCLI configuration |
 
 ### Global Flags
 
 | Flag | Description |
 |---|---|
-| `--config <path>` | Explicit config file (default: `.elevated-cli.yaml` in home or current dir) |
-| `--output <format>` | Output format: `rich` \| `json` \| `sarif` \| `plain` |
-| `--no-sandbox` | Skip sandbox execution (faster, less safe) |
+| `--config <path>` | Use an explicit configuration file |
+| `--output <format>` | `rich`, `json`, `sarif`, or `plain` |
+| `--no-sandbox` | Skip controlled execution; this does not establish runtime safety |
 | `--verbose` | Enable debug logging |
 
 ### `generate`
@@ -304,13 +380,13 @@ elevated-cli generate --prompt "..." --lang go
 
 | Flag | Description |
 |---|---|
-| `-p, --prompt` | Natural-language description of the code to generate (required) |
-| `-l, --lang` | Target language: `go` \| `python` \| `javascript` \| `typescript` (default `go`) |
-| `-m, --model` | LLM model override (e.g. `gpt-4o`, `claude-3-5-sonnet-20241022`) |
-| `--sandbox` | Sandbox mode override: `firecracker` \| `process` \| `docker` |
-| `--run` | Execute generated code in the sandbox after verification |
-| `--dry-run` | Print the generated prompt without calling the LLM |
-| `-o, --output` | Output format: `rich` \| `json` \| `sarif` \| `plain` |
+| `-p, --prompt` | Natural-language request for code generation; required |
+| `-l, --lang` | `go`, `python`, `javascript`, or `typescript`; default `go` |
+| `-m, --model` | Override the configured LLM model |
+| `--sandbox` | Requested mode: `firecracker`, `process`, or `docker` |
+| `--run` | Request controlled execution after verification |
+| `--dry-run` | Print the generated prompt without calling an LLM |
+| `-o, --output` | `rich`, `json`, `sarif`, or `plain` |
 
 ### `audit`
 
@@ -320,10 +396,10 @@ elevated-cli audit --dir ./src
 
 | Flag | Description |
 |---|---|
-| `-f, --file` | Path to a single file to audit |
+| `-f, --file` | Path to one file |
 | `-d, --dir` | Path to a directory to audit recursively |
-| `-l, --lang` | Language override (auto-detected from extension if omitted) |
-| `-o, --output` | Output format: `rich` \| `json` \| `sarif` \| `plain` |
+| `-l, --lang` | Language override; otherwise use extension detection where supported |
+| `-o, --output` | `rich`, `json`, `sarif`, or `plain` |
 
 ### `history`
 
@@ -333,9 +409,9 @@ elevated-cli history --last 10
 
 | Flag | Description |
 |---|---|
-| `-n, --last` | Number of recent scans to show (default 10) |
-| `-d, --date` | Filter by date (`YYYY-MM-DD`) |
-| `--id` | Show the full report for a specific scan ID |
+| `-n, --last` | Number of recent records to show |
+| `-d, --date` | Filter by `YYYY-MM-DD` |
+| `--id` | Show a complete report for a scan ID |
 
 ### `config`
 
@@ -346,138 +422,255 @@ elevated-cli config --set ai.model=gpt-4o
 
 | Flag | Description |
 |---|---|
-| `--show` | Print the current resolved configuration (default) |
-| `--set` | Set a config value: `key=value` |
+| `--show` | Print resolved configuration |
+| `--set` | Set a configuration value using `key=value` |
 
 ---
 
 ## Verification Pipeline
 
-Every piece of code is evaluated through four stages. Stages 1–3 run in **parallel**; stage 4 (sandbox) runs after they complete.
+Every target is assessed through four stages.
 
-### Stage 1 — Static Security Analysis (SAST)
+### Stage 0 — Code Extraction and Validation
 
-- **Go**: custom `go/ast` checks (hardcoded-secret detection, dangerous calls such as `exec.Command`, `os.Remove(All)`, `net.Dial`, `http.Get`, `ioutil.ReadFile`) plus `gosec`. If the `gosec` binary is missing, the stage returns an error and the pipeline **fails closed**.
-- **Python**: pattern checks for `eval(`, `exec(`, `os.system(`, `pickle.loads`, `subprocess.call(`, `shell=True`, hardcoded passwords.
-- **JavaScript/TypeScript**: pattern checks for `eval(`, `innerHTML`, `document.write(`, `dangerouslySetInnerHTML`, `process.env`.
-- **Other languages**: generic checks for hardcoded passwords/secrets and unresolved security TODOs.
+Before security analysis, ElevatedCLI should:
 
-Typical findings include:
+- Extract code from model responses or source files
+- Detect the selected or inferred language
+- Validate supported syntax where implemented
+- Return actionable parsing errors
+- Prevent execution if extraction or validation fails
+
+Malformed model output, unsupported formats, and invalid syntax should never be treated as a clean scan.
+
+### Stage 1 — Static Security Analysis
+
+#### Go
+
+Go verification can combine:
+
+- `gosec`
+- Custom `go/ast` and `go/parser` rules
+- Pattern-based checks
+
+Examples of detectable risks include:
 
 - Hardcoded secrets
-- Unsafe command execution
-- SQL-injection patterns (`gosec` G201/G202)
-- Unsafe file permissions (`gosec` G301/G302/G306)
-- Path-traversal risks (`gosec` G304)
-- Unhandled errors (`gosec` G104)
-- Dangerous package imports
+- Dangerous shell or command execution
+- Unsafe filesystem operations
+- `os.RemoveAll` misuse
+- Unsafe dynamic network access
+- `net.Dial` and `http.Get` usage where restricted
+- Unsafe file reads
+- SQL injection patterns
+- Unsafe file permissions
+- Path traversal indicators
+- Ignored errors
+- Dangerous imports
+
+#### Python
+
+Pattern checks may identify:
+
+- `eval(`
+- `exec(`
+- `os.system(`
+- `pickle.loads`
+- `subprocess.call(`
+- `shell=True`
+- Hardcoded passwords and tokens
+
+#### JavaScript and TypeScript
+
+Pattern checks may identify:
+
+- `eval(`
+- `innerHTML`
+- `document.write(`
+- `dangerouslySetInnerHTML`
+- Unsafe use of `process.env`
+
+> Pattern-based checks are useful signals, not complete language-specific security analysis.
 
 ### Stage 2 — Dependency Audit
 
-The dependency auditor extracts declared imports from the code and, when a project directory is available, scans lockfiles for known vulnerabilities.
-
-Supported lockfiles:
+The dependency auditor can inspect dependency manifests and lockfiles such as:
 
 ```text
-go.mod  go.sum
-package-lock.json  npm-shrinkwrap.json  yarn.lock  pnpm-lock.yaml
-requirements.txt  Pipfile.lock  poetry.lock  pyproject.toml
-Cargo.lock  composer.lock  Gemfile.lock
+go.mod
+go.sum
+package-lock.json
+npm-shrinkwrap.json
+yarn.lock
+pnpm-lock.yaml
+requirements.txt
+Pipfile.lock
+poetry.lock
+pyproject.toml
+Cargo.lock
+composer.lock
+Gemfile.lock
 ```
 
-- `go.sum` files are skipped when a `go.mod` exists in the same directory (govulncheck already covers the module).
-- **govulncheck** scans Go modules; **osv-scanner** scans all lockfiles.
-- An enabled scanner whose binary is missing is a hard, fail-closed error: a missing scanner must never be reported as a clean scan.
-- When no lockfile exists (e.g. `generate` with no on-disk project), there is no version-resolved dependency set, so the CVE scan is skipped and logged rather than fabricated as clean.
+- `govulncheck` audits Go modules.
+- `osv-scanner` audits supported dependency files across ecosystems.
+- If `go.mod` exists, `go.sum` can be treated as part of the same Go-module analysis.
+- If no dependency manifest or lockfile exists, the tool cannot derive a version-resolved dependency set. It must report that limitation rather than claim a clean dependency scan.
+- If a configured mandatory scanner is unavailable, the result should be marked incomplete under fail-closed mode.
 
 ### Stage 3 — Policy Enforcement
 
-Policies enforce project-specific security constraints. See [Security Policies](#security-policies) for the rule schema. Blocking rules are enforced before any sandbox execution.
+Policies apply project-specific restrictions before execution.
 
-### Stage 4 — Isolated Execution
+Example policy objectives:
 
-When sandboxing is enabled, code runs in an isolated, disposable environment:
+- Disallow dangerous imports
+- Disallow shell execution
+- Restrict unsafe functions
+- Require error handling
+- Restrict sensitive network usage
+- Restrict unsafe filesystem access
+- Require approved dependency sources
 
-- Temporary working directory (auto-cleaned after execution)
-- Language runners for Go, Python, Node.js, and TypeScript (`ts-node`)
-- Strict timeout enforcement (context deadline, default 10s)
-- Scrubbed environment (`HOME=/tmp`, fixed `PATH`, `TMPDIR=/tmp`) so user secrets are never passed through
-- Process-group management for clean teardown of the whole process tree
-- Code files are written with restrictive permissions (0600)
+Blocking policy violations must prevent execution. A policy rule configured with `action: block` must never be overridden by a high numerical score.
 
-> **Limitations:** memory (`max_memory_mb`) and network (`block_network`) are currently configuration values only — they are not yet enforced at the syscall level by the process runner. `Firecracker` is supported on Linux but today falls back to the process runner. Treat the process runner as a development convenience, not a hostile-code boundary.
+### Stage 4 — Controlled Process Execution
+
+When execution is explicitly requested and no blocking condition is present, the current execution backend may use a controlled Go `os/exec` process.
+
+Current safeguards may include:
+
+- Disposable temporary working directory
+- Restrictive generated-code file permissions
+- Timeout through `context.Context`
+- Scrubbed environment variables
+- Controlled `HOME`, `PATH`, and `TMPDIR` values
+- Process-group teardown
+- Captured stdout, stderr, exit code, and duration
+
+#### Important Limitations
+
+The current process runner runs on the host operating system. It is **not a hardened sandbox**.
+
+The following controls are not yet a verified part of the process runner:
+
+- MicroVM isolation
+- Container isolation
+- User namespaces
+- Mount namespaces
+- Seccomp filtering
+- Cgroups
+- Enforced CPU limits
+- Enforced memory limits
+- Enforced process limits
+- Enforced output limits
+- Enforced network blocking
+- Restricted host filesystem access at kernel level
+
+For production execution of untrusted code, use a verified isolation system such as Firecracker, gVisor, or another hardened environment with strong runtime controls.
+
+### Execution-Skipped Behavior
+
+When `--no-sandbox` is used, or when execution is not requested:
+
+- The target code is not executed.
+- The report should mark execution as skipped or not attempted.
+- Skipped execution does not prove runtime safety.
+- A project policy may require execution before approval.
+- If execution is mandatory and unavailable, the result should be non-approving, such as `ANALYSIS_INCOMPLETE`.
 
 ---
 
 ## Security Scoring
 
-The score is a deterministic, weighted sum of the four stage sub-scores:
+ElevatedCLI calculates a deterministic score from 0–100 using weighted stage scores:
 
 ```text
-final = SAST*sast_weight + Deps*dep_weight + Policy*policy_weight + Sandbox*sandbox_weight
+final_score =
+  (SAST × sast_weight) +
+  (Dependencies × dep_weight) +
+  (Policy × policy_weight) +
+  (Execution × sandbox_weight)
 ```
 
-Default weights (normalised if they do not sum to 1.0):
+The default weights are normalized if they do not total `1.0`.
 
-| Weight | Default | Basis |
+| Weight | Default | Example basis |
 |---:|---:|---|
-| `sast_weight` | 0.40 | 100 minus severity points per finding (CRITICAL 25 / HIGH 15 / MEDIUM 8 / LOW 3) |
-| `dep_weight` | 0.30 | 100 minus severity points per vulnerability |
-| `policy_weight` | 0.20 | 100 minus 20 per policy violation |
-| `sandbox_weight` | 0.10 | skipped 100 · not-executed 50 · failed 0 · succeeded 100 |
+| `sast_weight` | 0.40 | Severity deductions from static-analysis findings |
+| `dep_weight` | 0.30 | Severity deductions from dependency vulnerabilities |
+| `policy_weight` | 0.20 | Policy-violation deductions |
+| `sandbox_weight` | 0.10 | Controlled-execution outcome |
 
-### Verdicts
+Example severity deductions:
 
-The numeric score is advisory. The verdict is authoritative and **fail-closed**, evaluated in this order — a hard condition can never be overridden by a high score:
+| Severity | Example deduction |
+|---|---:|
+| Critical | 25 |
+| High | 15 |
+| Medium | 8 |
+| Low | 3 |
+
+### Verdict Rules
+
+The score is advisory. The verdict is authoritative.
 
 | Priority | Condition | Verdict |
-|---|---|---|
-| 1 | Sandbox executed and failed | `EXECUTION_FAILED` |
-| 2 | Mandatory check could not complete (fail-closed) | `ANALYSIS_INCOMPLETE` |
-| 3 | Any CRITICAL finding or vulnerability | `BLOCKED` |
-| 4 | Score ≥ `pass_threshold` (default 70) | `APPROVED` |
-| 5 | Score 40–69 | `WARNING` |
-| 6 | Score < 40 | `REJECTED` |
-
-| Score | Verdict | Meaning |
 |---:|---|---|
-| 70–100 | `APPROVED` | No blocking issues; safe to use |
-| 40–69 | `WARNING` | Review findings before using |
-| 0–39 | `REJECTED` | Do not use |
-| — | `BLOCKED` | A critical finding/vulnerability is present |
-| — | `ANALYSIS_INCOMPLETE` | A mandatory check could not run (fail-closed) |
-| — | `EXECUTION_FAILED` | Code ran in the sandbox and failed at runtime |
+| 1 | Mandatory analysis cannot complete under fail-closed mode | `ANALYSIS_INCOMPLETE` |
+| 2 | A critical SAST finding or critical dependency vulnerability exists | `BLOCKED` |
+| 3 | A policy rule configured as blocking is violated | `BLOCKED` |
+| 4 | Required execution backend is unavailable | Non-approving result |
+| 5 | Controlled execution was attempted and failed | `EXECUTION_FAILED` |
+| 6 | No blocking conditions and score meets threshold | `APPROVED` |
+| 7 | No blocking conditions but score requires review | `WARNING` or `REJECTED` |
 
-`fail_closed` defaults to **true**: when a mandatory check cannot complete, the result is `ANALYSIS_INCOMPLETE` rather than a partial score that could be read as safe. Only an explicit `fail_closed: false` opts into fail-open (and even then the verdict can never be `APPROVED` when analysis is incomplete).
+`APPROVED` means enabled verification controls completed and found no blocking condition. It does **not** mean that the code is proven secure, safe to execute on the host, or approved for production deployment.
 
-Example report:
+### Score Interpretation
+
+| Score | Typical verdict | Meaning |
+|---:|---|---|
+| 70–100 | `APPROVED` | No blocking findings were detected by enabled checks. Manual review remains required. |
+| 40–69 | `WARNING` | Findings or limitations require review before use. |
+| 0–39 | `REJECTED` | Significant risks were detected. Do not use without remediation. |
+| — | `BLOCKED` | A critical finding or blocking policy violation exists. |
+| — | `ANALYSIS_INCOMPLETE` | A required verification control did not complete. |
+| — | `EXECUTION_FAILED` | Controlled execution failed, timed out, or exited unsuccessfully. |
+
+### Correct Scoring Example
 
 ```text
 Target: generated/main.go
 Language: Go
 Analysis ID: 8b7b9a2f
 
-Stage scores:  SAST 100 · Deps 100 · Policy 60 · Sandbox —
-Security score: 88 / 100
-Final verdict: APPROVED
+Stage scores: SAST 100 · Dependencies 100 · Policy 60 · Execution NOT RUN
+Security score: 92 / 100
+Final verdict: BLOCKED
 
-Policy violation:
-  [BLOCKED_FUNCTION] Call to 'exec()' is blocked by security policy
-  File: generated_code.go:42
+Blocking policy violation:
+  [BLOCKED_FUNCTION]
+  Call to "exec()" is prohibited by security policy.
+  File: generated/main.go:42
+  Action: Code execution was not attempted.
 ```
+
+Although the numeric score is 92, the final verdict is `BLOCKED` because a blocking policy violation cannot be overridden by the score.
 
 ---
 
 ## Output Formats
 
-Use JSON or SARIF for automation and CI/CD pipelines:
+ElevatedCLI supports terminal-friendly and machine-readable reports.
 
 ```bash
-elevated-cli audit --dir ./src --output json | jq '.final_score'
+elevated-cli audit --dir ./src --output json
 elevated-cli audit --dir ./src --output sarif
+elevated-cli audit --dir ./src --output plain
 ```
 
-Example JSON response:
+### Example JSON Report
 
 ```json
 {
@@ -490,21 +683,35 @@ Example JSON response:
   "policy_violations": [
     {
       "rule": "BLOCKED_FUNCTION",
-      "description": "Call to 'exec()' is blocked by security policy.",
+      "description": "Call to exec() is prohibited by security policy.",
       "value": "exec"
     }
   ],
-  "sandbox": {"executed": false, "skipped": true, "mode": "none"},
-  "stage_scores": {"sast": 100, "deps": 100, "policy": 60, "sandbox": 100},
-  "final_score": 88,
-  "verdict": "APPROVED",
+  "execution": {
+    "attempted": false,
+    "skipped": true,
+    "mode": "process",
+    "reason": "Blocked by policy violation"
+  },
+  "stage_scores": {
+    "sast": 100,
+    "dependencies": 100,
+    "policy": 60,
+    "execution": 100
+  },
+  "final_score": 92,
+  "verdict": "BLOCKED",
   "analysis_complete": true,
   "ai_provider": "openai",
   "ai_model": "gpt-4o"
 }
 ```
 
-SARIF 2.1.0 output is structured for GitHub Code Scanning dashboards.
+> Exact JSON field names must match the implementation. Update this example if the report model differs.
+
+### SARIF
+
+SARIF output is intended for security-reporting tools and code-scanning systems that support SARIF 2.1.0.
 
 ---
 
@@ -514,95 +721,150 @@ Configuration can be supplied through:
 
 1. Command-line flags
 2. Environment variables
-3. Configuration file (`.elevated-cli.yaml`)
-4. Defaults
+3. `.elevated-cli.yaml`
+4. Built-in defaults
 
 Priority order:
 
 ```text
-CLI Flags > Environment Variables > Config File > Defaults
+CLI flags > Environment variables > Configuration file > Defaults
 ```
 
-Environment variables use the `SECURE_AI_` prefix with dots replaced by underscores:
+Environment variables use the `SECURE_AI_` prefix and replace dots with underscores:
 
 ```bash
-export SECURE_AI_AI_PROVIDER="openai"      # ai.provider
-export SECURE_AI_AI_MODEL="gpt-4o"         # ai.model
-export SECURE_AI_AI_API_KEY="..."          # ai.api_key
-export SECURE_AI_SANDBOX_MODE="process"    # sandbox.mode
+export SECURE_AI_AI_PROVIDER="openai"
+export SECURE_AI_AI_MODEL="gpt-4o"
+export SECURE_AI_AI_API_KEY="..."
+export SECURE_AI_SANDBOX_MODE="process"
 export SECURE_AI_SCORING_PASS_THRESHOLD="80"
 export SECURE_AI_ANALYSIS_OSV_SCANNER="true"
 ```
 
-### Schema
+### Configuration Schema
 
 | Key | Default | Description |
 |---|---|---|
-| `ai.provider` | `openai` | `openai` \| `anthropic` \| `local` |
-| `ai.model` | `gpt-4o` | Model name |
-| `ai.api_key` | `""` | API key (prefer env vars) |
-| `ai.endpoint` | `http://localhost:11434` | Endpoint for local/Ollama providers |
-| `ai.timeout_sec` | `120` | LLM call timeout |
-| `database.path` | `secure-ai.db` | SQLite database path |
-| `sandbox.mode` | `process` | `process` \| `firecracker` \| `docker` \| `skip` |
-| `sandbox.timeout_sec` | `10` | Execution timeout |
-| `sandbox.max_memory_mb` | `256` | Memory cap (config only today) |
-| `sandbox.block_network` | `true` | Network deny (config only today) |
-| `output.format` | `rich` | `rich` \| `json` \| `sarif` \| `plain` |
-| `output.show_code` | `false` | Include code snippets in reports |
-| `output.audit_db` | `secure-ai.db` | SQLite path for scan history |
-| `logger.level` | `info` | `debug` \| `info` \| `warn` \| `error` |
-| `logger.format` | `console` | `json` \| `console` |
-| `logger.file` | `""` | Optional log file |
-| `policy.file` | `.elevated-cli.yaml` | Policy rules file |
-| `scoring.sast_weight` | `0.40` | SAST stage weight |
-| `scoring.dep_weight` | `0.30` | Dependency stage weight |
-| `scoring.policy_weight` | `0.20` | Policy stage weight |
-| `scoring.sandbox_weight` | `0.10` | Sandbox stage weight |
-| `scoring.pass_threshold` | `70` | Score for `APPROVED` |
-| `scoring.fail_closed` | `true` | Fail closed on incomplete analysis |
-| `analysis.govulncheck` | `true` | Enable govulncheck scanning |
-| `analysis.osv_scanner` | `true` | Enable osv-scanner scanning |
+| `ai.provider` | `openai` | `openai`, `anthropic`, or `local` |
+| `ai.model` | `gpt-4o` | Selected model |
+| `ai.api_key` | `""` | API credential; prefer environment variables |
+| `ai.endpoint` | `http://localhost:11434` | Local provider endpoint |
+| `ai.timeout_sec` | `120` | LLM request timeout |
+| `database.path` | `secure-ai.db` | SQLite audit-database path |
+| `sandbox.mode` | `process` | `process`, `firecracker`, `docker`, or `skip` |
+| `sandbox.timeout_sec` | `10` | Controlled-execution timeout |
+| `sandbox.max_memory_mb` | `256` | Configuration value; runtime enforcement may be unavailable |
+| `sandbox.block_network` | `true` | Configuration value; runtime enforcement may be unavailable |
+| `output.format` | `rich` | `rich`, `json`, `sarif`, or `plain` |
+| `output.show_code` | `false` | Include source snippets in report output |
+| `logger.level` | `info` | `debug`, `info`, `warn`, or `error` |
+| `logger.format` | `console` | `console` or `json` |
+| `logger.file` | `""` | Optional log-file path |
+| `scoring.sast_weight` | `0.40` | Static-analysis score weight |
+| `scoring.dep_weight` | `0.30` | Dependency score weight |
+| `scoring.policy_weight` | `0.20` | Policy score weight |
+| `scoring.sandbox_weight` | `0.10` | Execution score weight |
+| `scoring.pass_threshold` | `70` | Approval threshold |
+| `scoring.fail_closed` | `true` | Do not approve when mandatory analysis is incomplete |
+| `analysis.govulncheck` | `true` | Enable Go vulnerability analysis |
+| `analysis.osv_scanner` | `true` | Enable OSV dependency scanning |
 | `analysis.custom_ast_rules` | `true` | Enable custom AST checks |
 
 ---
 
 ## Security Policies
 
-Policies are defined in the `policy` section of `.elevated-cli.yaml`:
+Policies define organization-specific restrictions.
+
+Example inline policy configuration:
 
 ```yaml
 policy:
-  file: .elevated-cli.yaml
   rules:
     blocked_imports:
       - os/exec
       - syscall
       - unsafe
       - net/http
+
     blocked_functions:
       - eval
       - exec
       - system
+
     require_error_handling: true
 ```
 
-Rules:
-
 | Rule | Behavior |
 |---|---|
-| `blocked_imports` | Blocklisted package paths. Go matches exact path or subpath (e.g. `os/exec` catches `os/exec/...`); other languages match on the line. |
-| `blocked_functions` | Blocked calls. Matches the bare function name (`Command`), the qualified call (`exec.Command`), or the package prefix (`exec`). |
-| `require_error_handling` | Flags Go code that discards errors with `_`. |
-| `max_cyclomatic_complexity` | Declared in the schema (default 15); complexity measurement is not yet enforced. |
+| `blocked_imports` | Denies listed package paths or import patterns |
+| `blocked_functions` | Denies listed function calls or qualified function patterns |
+| `require_error_handling` | Flags Go code that discards errors using `_` |
+| `max_cyclomatic_complexity` | Optional complexity threshold; verify enforcement status in the source |
 
-A critical policy violation or critical SAST finding forces a `BLOCKED` verdict regardless of the numeric score.
+A policy should support an action such as `warn` or `block`. Any rule configured with `block` should prevent execution and prevent an approving verdict.
+
+---
+
+## Audit Data and Privacy
+
+ElevatedCLI may store audit records in SQLite. Audit data can be sensitive because it may reveal source paths, project structure, model usage, security findings, and developer activity.
+
+Recommended default audit data:
+
+- Scan ID
+- Timestamp
+- Target path or target metadata
+- Generated-code hash
+- Provider and model metadata
+- Static-analysis findings
+- Dependency vulnerabilities
+- Policy violations
+- Execution metadata
+- Stage scores
+- Final score
+- Final verdict
+- Tool versions
+
+Avoid storing the following by default:
+
+- API keys
+- Tokens
+- Cookies
+- Environment variables
+- Secret values
+- Raw prompts
+- Generated source code
+- Full command-line arguments containing sensitive data
+
+If raw prompts or generated source are currently stored, document that behavior as a privacy limitation and review it before using ElevatedCLI in an organization.
+
+Recommended future retention controls:
+
+```yaml
+audit:
+  store_prompts: false
+  store_generated_code: false
+  redact_secrets: true
+  retention_days: 30
+```
+
+> Verify these configuration fields against the implementation before advertising them as active features.
+
+Operational recommendations:
+
+- Store SQLite files in user-private directories.
+- Apply restrictive filesystem permissions.
+- Encrypt backups.
+- Restrict database access.
+- Set organizational data-retention policies.
+- Do not treat log redaction as a substitute for secret-management controls.
 
 ---
 
 ## Audit History
 
-Every pipeline run is stored in SQLite (schema migrations live in `internal/database/migrations`):
+Each pipeline run can be saved to SQLite.
 
 ```bash
 elevated-cli history --last 20
@@ -610,114 +872,126 @@ elevated-cli history --date 2025-04-24
 elevated-cli history --id <scan-id>
 ```
 
-Reports store the code as a SHA-256 hash plus provider, model, stage scores, verdict, and findings. Prompt text is stored for auditability — configure `logger` and review the stored fields if prompt redaction is required for your environment.
+Audit history supports troubleshooting, review, comparisons, and operational visibility. Treat the audit database as potentially sensitive data.
+
+---
+
+## Platform Support
+
+| Platform | CLI | Static analysis | Controlled process runner | Firecracker microVM | gVisor |
+|---|---:|---:|---:|---:|---:|
+| Linux | Supported | Supported when tools are installed | Development only | Planned / Linux-specific | Planned |
+| macOS | Supported | Supported when tools are installed | Development only | Not supported | Not supported |
+| Windows | Supported where Go and external tools are available | Supported when tools are installed | Development only; verify process behavior | Not supported | Not supported |
+
+> Exact behavior depends on installed scanners, language runtimes, permissions, and operating-system process-management behavior. The current process runner is not a hardened isolation boundary on any platform.
+
+---
+
+## Language Support
+
+| Language | Code extraction | Syntax validation | Static analysis | Dependency audit | Controlled execution | Maturity |
+|---|---:|---:|---:|---:|---:|---|
+| Go | Yes | Verify implementation | `gosec` + AST rules | `govulncheck` + OSV | Yes | Primary |
+| Python | Yes | Verify implementation | Pattern-based checks | OSV lockfile scan | Yes | Experimental |
+| JavaScript | Yes | Verify implementation | Pattern-based checks | OSV lockfile scan | Yes | Experimental |
+| TypeScript | Yes | Verify implementation | Pattern-based checks | OSV lockfile scan | Requires `ts-node` | Experimental |
+
+> Multi-language support should be considered experimental until each language has robust parsing, dedicated security analysis, test coverage, and hardened isolated execution.
+
+---
+
+## External Tool Compatibility
+
+| Tool | Purpose | Needed when |
+|---|---|---|
+| Go | Build, Go parsing, Go execution | Working with Go projects |
+| `gosec` | Go static application security testing | Go SAST is enabled |
+| `govulncheck` | Go module vulnerability scanning | Go dependency audit is enabled |
+| `osv-scanner` | Multi-ecosystem dependency scanning | OSV scanning is enabled |
+| Python | Python execution | Executing Python code |
+| Node.js | JavaScript execution | Executing JavaScript code |
+| `ts-node` | TypeScript execution | Executing TypeScript code |
+
+When a configured mandatory tool is missing, fail-closed mode should return an incomplete result rather than report a clean scan.
+
+Pin, test, and document compatible external-tool versions in CI before release.
 
 ---
 
 ## Exit Codes
 
-| Exit Code | Meaning |
-|---:|---|
-| `0` | Success |
-| `1` | Error (invalid usage, pipeline failure, config error) |
-| `2` | A file was **rejected** (`REJECTED` verdict) |
+Verify these values against the implementation before publishing releases.
 
-`generate` and `audit` exit with code `2` when the final verdict is `REJECTED`, so CI can gate on it.
+| Exit code | Meaning |
+|---:|---|
+| `0` | Verification completed with a non-blocking result |
+| `1` | CLI, input, configuration, database, or internal error |
+| `2` | Security decision blocked use or execution, such as `REJECTED` or `BLOCKED` |
+| `3` | Planned: mandatory analysis or required hardened isolation could not complete |
+| `4` | Planned: controlled execution failed, timed out, or exceeded an enforced limit |
+
+If the current implementation only returns `0`, `1`, and `2`, codes `3` and `4` remain planned behavior and should not be relied upon in CI.
 
 ---
 
 ## Threat Model
 
-This tool treats the following as untrusted:
+ElevatedCLI treats the following as untrusted:
 
 - AI-generated source code
 - AI model output
 - User prompts
 - Third-party dependencies
 - External scanner output
-- Configuration supplied by untrusted environments
-- Files within scanned projects unless explicitly trusted
+- Configuration from untrusted environments
+- Files in scanned projects unless explicitly trusted
 
-The tool aims to reduce risk from:
+The project aims to reduce risk from:
 
-- Arbitrary code execution
+- Unsafe code generation
 - Command injection
+- SQL injection
 - Path traversal
+- Hardcoded credentials
 - Secret leakage
-- Unsafe dependency usage
+- Vulnerable dependencies
+- Unsafe imports and APIs
+- Resource exhaustion
 - Policy bypasses
-- False-positive “safe” decisions
+- False “safe” results caused by skipped analysis
 
 ### Out of Scope
 
-This project does not guarantee that code is secure. It cannot fully protect against:
+ElevatedCLI cannot guarantee that code is secure or protect against every threat, including:
 
 - Unknown vulnerabilities
-- Flaws in third-party scanners
+- Scanner blind spots and false negatives
+- Compromised third-party dependencies
+- Compromised LLM providers
 - Compromised host operating systems
 - Compromised sandbox runtimes
-- Malicious or compromised AI providers
-- Logic bugs not detectable by the configured checks
-- Social engineering or unsafe human approval decisions
+- Kernel vulnerabilities
+- Logic bugs outside scanner coverage
+- Unsafe human approvals
+- Data leakage through prompts, logs, reports, or databases if retention is not configured carefully
 
 ---
 
 ## Security Principles
 
-ElevatedCLI follows these principles:
-
-- **Fail closed:** If a required security control fails, block execution.
-- **Least privilege:** Sandboxed workloads receive minimal privileges.
-- **Deny by default:** Network access and dangerous operations require explicit approval.
-- **Defense in depth:** Use multiple layers — syntax checks, SAST, dependency scanning, policies, and sandboxing.
-- **No direct host execution:** Untrusted code must not run directly on the developer machine or CI host.
-- **Auditability:** Record decisions, findings, and execution metadata.
-- **Secret protection:** Redact secrets from logs and reports; subprocesses receive a scrubbed environment.
-- **Deterministic policy decisions:** Identical inputs always produce identical scores and verdicts.
-
----
-
-## Architecture
-
-```text
-elevated-cli/
-├── cmd/
-│   └── elevated-cli/
-│       ├── main.go
-│       ├── version.go
-│       └── commands/
-│           ├── root.go        # root command, global flags, config/logger init
-│           ├── generate.go    # AI generation + pipeline
-│           ├── audit.go       # file/dir auditing + CVE scanning
-│           ├── history.go     # history + config commands
-│           └── common.go      # pipeline wiring, report printing
-│
-├── internal/
-│   ├── ai/                    # OpenAI, Anthropic, local/Ollama clients + prompt builder
-│   ├── config/                # Viper-based configuration loading
-│   ├── database/              # SQLite audit history + migrations
-│   ├── logger/                # zap structured logging
-│   ├── output/                # report formatters (rich/json/sarif/plain) + templates
-│   ├── sandbox/               # process_runner, firecracker_runner, resource_governor
-│   ├── security/              # pipeline, static_analyzer, dependency_auditor,
-│   │   │                      # policy_engine, scoring
-│   │   └── scoring/           # deterministic scoring algorithm
-│   └── utils/                 # filesystem helpers
-│
-├── pkg/
-│   └── security/              # shared types (Finding, Vulnerability, Verdict, Report…)
-│
-├── configs/                   # sample configs (default/development/enterprise/production)
-├── docs/                      # architecture, guides, and security documentation
-├── test/
-├── go.mod
-├── go.sum
-├── Makefile
-├── README.md
-└── LICENSE
-```
+- **Fail closed:** A mandatory security control that cannot complete should not result in an approving verdict.
+- **Defense in depth:** Use parsing, SAST, dependency auditing, policies, scoring, runtime controls, and manual review together.
+- **Least privilege:** Future hardened runtimes should grant only minimal filesystem, network, process, and environment access.
+- **Deny by default:** Network access and dangerous actions should require explicit policy approval.
+- **No unverified host execution:** By default, ElevatedCLI should not execute generated code unless execution is explicitly requested. The current process runner executes code on the host and is suitable only for controlled local development.
+- **Explainable decisions:** Findings, policy violations, scores, and verdicts should state why a decision was made.
+- **Auditability:** Preserve enough metadata to understand prior decisions without retaining secrets unnecessarily.
+- **Secret protection:** Redact secrets where possible and avoid raw-secret retention by default.
+- **Human review remains required:** Automation helps prioritize risk; it does not replace secure engineering review.
 
 ---
+
 
 ## Development
 
@@ -747,10 +1021,15 @@ govulncheck ./...
 go build -o bin/elevated-cli ./cmd/elevated-cli
 ```
 
-### Build with Version Info
+### Build with Version Information
 
 ```bash
-go build -ldflags="-X main.Version=1.0.0 -X main.Commit=$(git rev-parse --short HEAD) -X main.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o bin/elevated-cli ./cmd/elevated-cli
+go build \
+  -ldflags="-X main.Version=1.0.0 \
+  -X main.Commit=$(git rev-parse --short HEAD) \
+  -X main.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  -o bin/elevated-cli \
+  ./cmd/elevated-cli
 ```
 
 ### Run Locally
@@ -762,86 +1041,97 @@ go run ./cmd/elevated-cli --help
 ### Makefile
 
 ```bash
-make build           # go build -o elevated-cli ./cmd/elevated-cli
-make build-release   # build with injected version/commit/date
-make test            # go test ./... -race -count=1 -v
-make gosec           # gosec ./...
-make vulncheck       # govulncheck ./...
-make all-checks      # fmt + vet + lint + test + gosec + vulncheck
+make build           # Build elevated-cli
+make build-release   # Build with version, commit, and date metadata
+make test            # Run tests with race detection
+make gosec           # Run gosec
+make vulncheck       # Run govulncheck
+make all-checks      # Run formatting, vet, lint, tests, gosec, and vulncheck
 ```
 
 ---
 
 ## Testing Requirements
 
-Before considering a release ready, the project should include tests for:
+Before a release should be considered secure enough for broader internal testing, include tests for:
 
 - Malformed AI responses
-- Invalid JSON and Markdown code extraction
-- Unsupported language handling
-- Syntax failures
+- Invalid JSON and Markdown code-block extraction
+- Unsupported-language handling
+- Invalid syntax
 - Hardcoded-secret detection
-- Dangerous-import detection
-- Command-execution detection
+- Dangerous import detection
+- Shell and command-execution detection
 - SQL-injection detection
 - Dependency vulnerability reporting
-- Policy fail-closed behavior
-- Safe command argument construction
-- Path traversal protection
+- Missing scanner behavior
+- Fail-closed policy behavior
+- Blocking-policy behavior
+- Safe external-command argument construction
+- Path traversal prevention
+- Temporary-directory containment
 - Temporary-file cleanup
-- Timeout handling
-- Sandbox cleanup
+- Context timeout handling
+- Process-tree cleanup
 - Environment and secret isolation
-- Security-score calculation (including fail-closed verdicts)
-- Audit-log secret redaction
-- CLI exit codes
-- End-to-end verification flow
+- Score calculations
+- Verdict precedence over scores
+- Audit-log redaction
+- SQLite database error handling
+- CLI exit-code behavior
+- End-to-end pipeline behavior
+- Firecracker/gVisor backend failure handling when implemented
+- Resource-limit and network-denial enforcement when implemented
 
 ---
 
 ## Roadmap
 
-### P0 — Required Before Untrusted Execution
+### P0 — Required Before Hostile-Code Execution
 
-- [x] Enforce fail-closed verification behavior
-- [x] Prevent direct host execution (no sandbox falls back to nothing)
-- [ ] Implement verified sandbox isolation (Firecracker/gVisor)
-- [ ] Enforce timeout, memory, CPU, process, and output limits (timeout done; memory/CPU/network pending)
-- [ ] Deny network access by default (config exists; syscall enforcement pending)
-- [ ] Restrict filesystem and environment-variable access (env scrubbing done; fs/namespace enforcement pending)
-- [ ] Add path traversal and temporary-file protections (temp-dir isolation and containment checks done)
-- [ ] Ensure secrets never appear in logs or reports
-
-### P1 — Secure MVP
-
-- [x] Cobra CLI commands and Viper configuration
+- [x] Cobra CLI and Viper configuration
 - [x] LLM provider abstraction
-- [x] Safe structured AI response parsing
-- [x] Go syntax validation
-- [x] `gosec` integration
-- [x] `govulncheck` and OSV-Scanner integration
-- [x] Configurable policy engine
-- [x] Deterministic security scoring
-- [x] Human-readable and JSON reports (plus SARIF/plain)
-- [x] Structured logging
-- [x] SQLite audit storage
-- [x] Unit and integration tests
+- [x] Static analysis and dependency auditing integrations
+- [x] Policy enforcement
+- [x] Deterministic scoring
+- [x] Structured reporting and SQLite history
+- [x] Controlled local process execution with timeout and environment scrubbing
+- [ ] Firecracker or gVisor hardened isolation
+- [ ] No silent fallback from requested microVM isolation to host `os/exec`
+- [ ] Enforced CPU, memory, process, output, filesystem, and network controls
+- [ ] Verified secret-redaction and retention controls
+- [ ] Hostile-code and sandbox-escape test coverage
+- [ ] Independent security review of the execution backend
+
+### P1 — Secure MVP Improvements
+
+- [ ] Strong syntax validation for all supported languages
+- [ ] More robust multi-language analyzers
+- [ ] Explicit policy severity and action schema
+- [ ] Policy file versioning
+- [ ] Better remediation guidance
+- [ ] Improved SARIF metadata
+- [ ] CI gating based on verified exit-code behavior
+- [ ] Test fixtures for vulnerable and malicious code
+- [ ] Database retention controls
+- [ ] Optional encrypted audit storage
 
 ### P2 — Production Hardening
 
-- [ ] Firecracker microVM support (stub currently falls back to process runner)
+- [ ] Firecracker microVM orchestration
 - [ ] gVisor runtime support
-- [ ] Docker sandbox isolation
-- [ ] Enforce memory/CPU/network limits in the process runner
+- [ ] Hardened Docker/container profile, if adopted
 - [ ] SBOM generation
-- [ ] Signed release binaries
+- [ ] Signed binaries
 - [ ] Reproducible builds
-- [ ] CI security gates
-- [ ] Policy bundles and versioning
-- [ ] Audit retention controls
+- [ ] Release provenance
+- [ ] Dependency pinning and supply-chain verification
 - [ ] Metrics and observability
-- [ ] Multi-language analyzers
-- [ ] Plugin architecture for analyzers
+- [ ] Policy bundles
+- [ ] Plugin architecture
+- [ ] Enterprise identity, access, and centralized audit export
+
+> Until P0 hardened-isolation controls are implemented and independently tested, ElevatedCLI is appropriate for controlled local development and security-review workflows—not hostile-code execution or production security enforcement.
 
 ---
 
@@ -859,23 +1149,24 @@ go test ./...
 
 Please ensure that:
 
-- New security controls include tests.
-- Security-sensitive changes include threat-model updates.
+- New security controls include automated tests.
+- Security-sensitive changes update the threat model.
 - No secrets are committed.
-- New policies document their expected behavior.
-- New external tools are pinned and validated.
+- New policy rules document their behavior and severity.
+- External tools are pinned and validated.
 - Changes do not weaken fail-closed behavior.
-- Sandbox changes are reviewed carefully.
+- Sandbox changes receive careful security review.
+- Documentation accurately distinguishes implemented, experimental, and planned functionality.
 
-For major security changes, open an issue first to discuss architecture and threat-model impact.
+For major architecture or security changes, open an issue first to discuss design and threat-model impact.
 
 ---
 
 ## Responsible Disclosure
 
-If you discover a security vulnerability, do not open a public issue.
+Do not open a public issue for a suspected security vulnerability.
 
-Please report it privately to:
+Report security concerns privately to:
 
 ```text
 security@your-domain.com
@@ -883,9 +1174,10 @@ security@your-domain.com
 
 Include:
 
-- A description of the issue
+- A clear issue description
 - Affected version or commit
 - Reproduction steps
+- Expected and actual behavior
 - Potential impact
 - Suggested remediation, if available
 
@@ -899,6 +1191,10 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Disclaimer
 
-ElevatedCLI is a security-assistance tool, not a guarantee of secure software. Automated analysis can miss vulnerabilities, produce false positives, and depend on the reliability of external tools and sandbox runtimes.
+ElevatedCLI is a security-assistance tool, not a security guarantee.
 
-Always use code review, testing, dependency controls, least-privilege deployment, and appropriate security practices before deploying AI-generated code.
+Automated analysis can miss vulnerabilities, produce false positives, depend on incomplete vulnerability databases, and be limited by the capabilities of the installed security tools and execution backend.
+
+A positive score or `APPROVED` verdict means that the enabled controls found no blocking condition. It does not establish that code is safe, secure, production-ready, or safe to execute on the host.
+
+Always use human code review, testing, least-privilege deployment, secure dependency management, hardened execution isolation, and appropriate operational security controls before deploying AI-generated code.
