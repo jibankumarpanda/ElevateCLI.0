@@ -31,7 +31,7 @@ func TestReporterFormats(t *testing.T) {
 		want   string
 	}{
 		{"json", `"final_score": 92`},
-		{"plain", "Security Score"},
+		{"plain", "Score    : 92/100"},
 		{"sarif", `"version": "2.1.0"`},
 		{"rich", "Verdict"},
 		{"unknown-format-falls-back-to-rich", "Verdict"},

@@ -44,7 +44,7 @@ func TestPrintPlain(t *testing.T) {
 	if err := PrintPlain(&buf, formatterReport(), true); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Scan ID", "score", "SAST", "G101", "hardcoded credential"} {
+	for _, want := range []string{"Scan ID", "score", "SAST", "LOW", "hardcoded credential"} {
 		if !strings.Contains(buf.String(), want) {
 			t.Errorf("plain output missing %q:\n%s", want, buf.String())
 		}
