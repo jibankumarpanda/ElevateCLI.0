@@ -63,10 +63,10 @@ func PrintRich(w io.Writer, r *sec.Report, showCode bool) error {
 func printHeader(w io.Writer, r *sec.Report) {
 	fmt.Fprintf(w, "\n")
 	_, _ = bold.Fprintf(w, "  ElevatedCLI Security Report\n")
-	gray.Fprintf(w, "  Scan ID : %s\n", r.ID)
-	gray.Fprintf(w, "  Provider: %s / %s\n", r.AIProvider, r.AIModel)
-	gray.Fprintf(w, "  Language: %s\n", r.Language)
-	gray.Fprintf(w, "  Duration: %s\n", r.Duration.Round(1e6))
+	_, _ = gray.Fprintf(w, "  Scan ID : %s\n", r.ID)
+	_, _ = gray.Fprintf(w, "  Provider: %s / %s\n", r.AIProvider, r.AIModel)
+	_, _ = gray.Fprintf(w, "  Language: %s\n", r.Language)
+	_, _ = gray.Fprintf(w, "  Duration: %s\n", r.Duration.Round(1e6))
 	fmt.Fprintf(w, "\n")
 }
 
@@ -139,11 +139,11 @@ func printFindings(w io.Writer, findings []sec.Finding) {
 		severityBadge(w, f.Severity)
 		fmt.Fprintf(w, "  %s", f.Title)
 		if f.Line > 0 {
-			gray.Fprintf(w, " (line %d)", f.Line)
+			_, _ = gray.Fprintf(w, " (line %d)", f.Line)
 		}
 		fmt.Fprintf(w, "\n")
 		if f.Code != "" {
-			gray.Fprintf(w, "     Code: %s\n", f.Code)
+			_, _ = gray.Fprintf(w, "     Code: %s\n", f.Code)
 		}
 		if f.Suggestion != "" {
 			_, _ = cyan.Fprintf(w, "     Fix:  %s\n", f.Suggestion)
@@ -162,7 +162,7 @@ func printVulns(w io.Writer, vulns []sec.Vulnerability) {
 			_, _ = cyan.Fprintf(w, "     Fix: upgrade to %s\n", v.FixedVersion)
 		}
 		if v.Description != "" {
-			gray.Fprintf(w, "     %s\n", v.Description)
+			_, _ = gray.Fprintf(w, "     %s\n", v.Description)
 		}
 		fmt.Fprintf(w, "\n")
 	}
@@ -175,7 +175,7 @@ func printViolations(w io.Writer, violations []sec.PolicyViolation) {
 		_, _ = red.Fprintf(w, "  [POLICY]")
 		fmt.Fprintf(w, "  %s", v.Description)
 		if v.Line > 0 {
-			gray.Fprintf(w, " (line %d)", v.Line)
+			_, _ = gray.Fprintf(w, " (line %d)", v.Line)
 		}
 		fmt.Fprintf(w, "\n")
 	}
@@ -194,9 +194,9 @@ func printSandbox(w io.Writer, s sec.SandboxResult) {
 		_, _ = red.Fprintf(w, "  Result  : FAIL\n")
 	}
 	if s.Stdout != "" {
-		gray.Fprintf(w, "\n  Output:\n")
+		_, _ = gray.Fprintf(w, "\n  Output:\n")
 		for _, line := range strings.Split(strings.TrimSpace(s.Stdout), "\n") {
-			gray.Fprintf(w, "    %s\n", line)
+			_, _ = gray.Fprintf(w, "    %s\n", line)
 		}
 	}
 	fmt.Fprintf(w, "\n")
@@ -205,7 +205,7 @@ func printSandbox(w io.Writer, s sec.SandboxResult) {
 func printCode(w io.Writer, code, lang string) {
 	_, _ = bold.Fprintf(w, "  Generated Code (%s)\n\n", lang)
 	for _, line := range strings.Split(code, "\n") {
-		gray.Fprintf(w, "  │ %s\n", line)
+		_, _ = gray.Fprintf(w, "  │ %s\n", line)
 	}
 	fmt.Fprintf(w, "\n")
 }
@@ -214,33 +214,33 @@ func printVerdict(w io.Writer, r *sec.Report) {
 	fmt.Fprintf(w, "\n  Verdict: ")
 	switch r.Verdict {
 	case sec.VerdictApproved:
-		bgGreen.Fprintf(w, "  ✓  APPROVED  ")
+		_, _ = bgGreen.Fprintf(w, "  ✓  APPROVED  ")
 		fmt.Fprintf(w, "  Score %d/100 — safe to use\n", r.FinalScore)
 	case sec.VerdictWarning:
-		bgYellow.Fprintf(w, "  ⚠  WARNING   ")
+		_, _ = bgYellow.Fprintf(w, "  ⚠  WARNING   ")
 		fmt.Fprintf(w, "  Score %d/100 — review findings before using\n", r.FinalScore)
 	case sec.VerdictRejected:
-		bgRed.Fprintf(w, "  ✗  REJECTED  ")
+		_, _ = bgRed.Fprintf(w, "  ✗  REJECTED  ")
 		fmt.Fprintf(w, "  Score %d/100 — do not use\n", r.FinalScore)
 	}
 	fmt.Fprintf(w, "\n")
 }
 
 func printDivider(w io.Writer) {
-	gray.Fprintf(w, "  %s\n", strings.Repeat("─", 70))
+	_, _ = gray.Fprintf(w, "  %s\n", strings.Repeat("─", 70))
 }
 
 func severityBadge(w io.Writer, s sec.Severity) {
 	switch s {
 	case sec.SeverityCritical:
-		bgRed.Fprintf(w, " CRITICAL ")
+		_, _ = bgRed.Fprintf(w, " CRITICAL ")
 	case sec.SeverityHigh:
 		_, _ = red.Fprintf(w, " [HIGH]   ")
 	case sec.SeverityMedium:
 		_, _ = yellow.Fprintf(w, " [MEDIUM] ")
 	case sec.SeverityLow:
-		white.Fprintf(w, " [LOW]    ")
+		_, _ = white.Fprintf(w, " [LOW]    ")
 	default:
-		gray.Fprintf(w, " [INFO]   ")
+		_, _ = gray.Fprintf(w, " [INFO]   ")
 	}
 }

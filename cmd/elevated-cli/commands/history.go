@@ -96,9 +96,9 @@ func printHistoryTable(summaries []database.ScanSummary) {
 	gray := color.New(color.FgHiBlack)
 	bold := color.New(color.Bold)
 
-	bold.Printf("\n  %-5s  %-8s  %-8s  %-10s  %-19s  %s\n",
+	_, _ = bold.Printf("\n  %-5s  %-8s  %-8s  %-10s  %-19s  %s\n",
 		"Score", "Verdict", "Lang", "Provider", "Date", "Prompt")
-	gray.Printf("  %s\n", strings.Repeat("─", 85))
+	_, _ = gray.Printf("  %s\n", strings.Repeat("─", 85))
 
 	for _, s := range summaries {
 		line := formatters.SummaryLine(
@@ -115,7 +115,7 @@ func printHistoryTable(summaries []database.ScanSummary) {
 		}
 	}
 
-	gray.Printf("\n  Use --id <scan_id> to see the full report for any scan.\n\n")
+	_, _ = gray.Printf("\n  Use --id <scan_id> to see the full report for any scan.\n\n")
 }
 
 // ─── config command ───────────────────────────────────────────────────────────
