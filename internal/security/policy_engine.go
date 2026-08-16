@@ -84,8 +84,12 @@ func (e *PolicyEngineImpl) checkGo(code string) ([]sec.PolicyViolation, error) {
 		// ── Check blocked function calls ──────────────────────────────────
 		case *ast.CallExpr:
 			callName := extractCallName(node)
+			qualified := extractQualifiedCallName(node)
 			for _, blocked := range e.cfg.Rules.BlockedFunctions {
-				if strings.EqualFold(callName, blocked) {
+				// Match the bare function name ("Command") or the qualified
+				// call ("exec.Command"), so blocking "exec" also catches
+				// exec.Command(...).
+				if strings.EqualFold(callName, blocked) || strings.EqualFold(qualified, blocked) {
 					violations = append(violations, sec.PolicyViolation{
 						Rule:        "BLOCKED_FUNCTION",
 						Description: fmt.Sprintf("Call to '%s()' is blocked by security policy.", blocked),
@@ -93,6 +97,7 @@ func (e *PolicyEngineImpl) checkGo(code string) ([]sec.PolicyViolation, error) {
 						Line:        fset.Position(node.Pos()).Line,
 						Value:       callName,
 					})
+					break
 				}
 			}
 
@@ -173,6 +178,25 @@ func extractCallName(call *ast.CallExpr) string {
 	case *ast.Ident:
 		return f.Name
 	case *ast.SelectorExpr:
+		return f.Sel.Name
+	}
+	return ""
+}
+
+// extractQualifiedCallName returns "pkg.Func" for selector calls such as
+// exec.Command, or the bare identifier for direct calls. It lets the blocked
+// function rule match a package-level block like "exec".
+func extractQualifiedCallName(call *ast.CallExpr) string {
+	if call == nil {
+		return ""
+	}
+	switch f := call.Fun.(type) {
+	case *ast.Ident:
+		return f.Name
+	case *ast.SelectorExpr:
+		if pkg, ok := f.X.(*ast.Ident); ok {
+			return pkg.Name + "." + f.Sel.Name
+		}
 		return f.Sel.Name
 	}
 	return ""

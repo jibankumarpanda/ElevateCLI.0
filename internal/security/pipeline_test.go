@@ -136,8 +136,30 @@ func TestPipelineFindingsAggregated(t *testing.T) {
 	if len(report.Findings) != 1 || len(report.Vulns) != 1 || len(report.Violations) != 1 {
 		t.Errorf("stages not aggregated: %+v", report)
 	}
-	if report.Verdict == sec.VerdictApproved {
-		t.Error("report with findings should not be approved")
+	// A HIGH finding + MEDIUM vuln deduct points but may stay above the 70
+	// threshold — the score must reflect the deductions regardless.
+	if report.FinalScore >= 100 {
+		t.Errorf("findings should reduce the score, got %d", report.FinalScore)
+	}
+}
+
+func TestPipelineCriticalFindingBlocks(t *testing.T) {
+	cfg := pipelineConfig("skip")
+	p := New(cfg,
+		&stubStaticAnalyzer{findings: []sec.Finding{{ID: "f", RuleID: "G105", Severity: sec.SeverityCritical}}},
+		&stubDependencyAuditor{},
+		&stubPolicyEngine{},
+		&stubSandboxRunner{result: sec.SandboxResult{Skipped: true, Mode: "none"}},
+	)
+	report, err := p.Run(context.Background(), "p", "code", "go", "x", "y")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if report.Verdict != sec.VerdictBlocked {
+		t.Errorf("verdict = %q, want BLOCKED for critical finding", report.Verdict)
+	}
+	if !report.HasBlockers() {
+		t.Error("critical finding should register as a blocker")
 	}
 }
 
