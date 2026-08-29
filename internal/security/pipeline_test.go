@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/jibankumarpanda/ElevateCLI.0/internal/config"
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/sandbox"
 	sec "github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
 )
 
@@ -118,6 +119,33 @@ func TestPipelineSandboxFailureFailsClosed(t *testing.T) {
 	}
 	if report.Verdict != sec.VerdictAnalysisIncomplete {
 		t.Errorf("verdict = %q", report.Verdict)
+	}
+}
+
+func TestPipelineFirecrackerModeFailsClosed(t *testing.T) {
+	// Sandbox mode "firecracker" with the real (unimplemented) microVM runner
+	// must never fall back to host execution and must mark the run
+	// ANALYSIS_INCOMPLETE so the requested hardware-level boundary is not
+	// silently replaced with a weaker one.
+	cfg := pipelineConfig("firecracker")
+	p := New(cfg,
+		&stubStaticAnalyzer{},
+		&stubDependencyAuditor{},
+		&stubPolicyEngine{},
+		sandbox.NewFirecrackerRunner(sandbox.DefaultLimits()),
+	)
+	report, err := p.Run(context.Background(), "p", "code", "go", "x", "y")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if report.Sandbox.Executed {
+		t.Error("requested microVM must never result in a host os/exec run")
+	}
+	if report.AnalysisComplete {
+		t.Error("firecracker mode with no microVM runtime must fail closed (mark analysis incomplete)")
+	}
+	if report.Verdict != sec.VerdictAnalysisIncomplete {
+		t.Errorf("verdict = %q, want ANALYSIS_INCOMPLETE", report.Verdict)
 	}
 }
 
