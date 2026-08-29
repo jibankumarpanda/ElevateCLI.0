@@ -27,7 +27,7 @@ func RedactSecrets(s string) string {
 //	export API_KEY="sk-..."
 //	"client_secret": "abc"
 //	Authorization: Bearer xyz
-var secretKeyRe = regexp.MustCompile(`(?i)^(\s*(?:export\s+)?[a-zA-Z_.@$#-]*?(?:api[_-]?key|apikey|api_key|password|passwd|pwd|secret|token|auth|credential|consumer[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|aws[_-]?secret[_-]?access[_-]?key)[a-zA-Z0-9_.-]*\s*)([=:]\s*)(.*)$`)
+var secretKeyRe = regexp.MustCompile(`(?i)^(\s*(?:export\s+)?["']?[a-zA-Z0-9_.@$#-]*?(?:api[_-]?key|apikey|api_key|password|passwd|pwd|secret|token|auth|credential|consumer[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|aws[_-]?secret[_-]?access[_-]?key)[a-zA-Z0-9_."'-]*["']?\s*)([=:]\s*)(.*)$`)
 
 func redactAssignments(s string) string {
 	lines := strings.Split(s, "\n")

@@ -7,20 +7,19 @@ import (
 
 func TestRedactSecretsAssignments(t *testing.T) {
 	cases := map[string]string{
-		`password = hunter2`:             `password = [REDACTED]`,
-		`export API_KEY=sk-abcdef`:       `export API_KEY=[REDACTED]`,
-		`"client_secret": "abc123"`:      `"client_secret": "[REDACTED]"`,
-		`Authorization: Bearer abc.def`:  `Authorization: [REDACTED]`,
-		`access_key = AKIAI44QH8DHBEXAMPLE`: `access_key = [REDACTED]`,
+		`password = hunter2`:                    "hunter2",
+		`export API_KEY=sk-abcdefghijklmnopqrs`: "sk-abcdefghijklmnopqrs",
+		`"client_secret": "abc123"`:             "abc123",
+		`Authorization: Bearer abc.def`:         "abc.def",
+		`access_key = AKIAI44QH8DHBEXAMPLE`:     "AKIAI44QH8DHBEXAMPLE",
 	}
-	for in, want := range cases {
+	for in, secret := range cases {
 		got := RedactSecrets(in)
+		if strings.Contains(got, secret) {
+			t.Errorf("RedactSecrets(%q) leaked %q: %q", in, secret, got)
+		}
 		if !strings.Contains(got, "[REDACTED]") {
 			t.Errorf("RedactSecrets(%q) = %q, want a redaction marker", in, got)
-			continue
-		}
-		if !strings.Contains(got, want[strings.Index(want, "="):]) || strings.Contains(got, "hunter2") {
-			t.Errorf("RedactSecrets(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

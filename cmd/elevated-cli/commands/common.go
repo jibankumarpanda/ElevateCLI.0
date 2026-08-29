@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jibankumarpanda/ElevateCLI.0/internal/config"
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/database"
 	"github.com/jibankumarpanda/ElevateCLI.0/internal/output"
 	"github.com/jibankumarpanda/ElevateCLI.0/internal/sandbox"
 	"github.com/jibankumarpanda/ElevateCLI.0/internal/security"
@@ -70,6 +71,27 @@ func printReport(report *sec.Report, format string, showCode bool) {
 	reporter := output.NewReporter(format, showCode, w)
 	if err := reporter.Print(report); err != nil {
 		fmt.Fprintf(os.Stderr, "Error printing report: %v\n", err)
+	}
+}
+
+// saveAuditRecord persists a completed report to the local audit trail,
+// honouring the configured retention and redaction settings. Failures to
+// write history are warnings, not command failures: analysis already ran and
+// was reported to the user, and a full audit DB must not block development.
+func saveAuditRecord(cfg *config.Config, report *sec.Report) {
+	db, err := database.Open(cfg.Output.AuditDB)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "⚠ audit history unavailable: %v\n", err)
+		return
+	}
+	defer db.Close() //nolint:errcheck
+
+	if err := db.SaveReport(*report, database.SaveOptions{
+		StorePrompts:       cfg.Audit.StorePrompts,
+		StoreGeneratedCode: cfg.Audit.StoreGeneratedCode,
+		RedactSecrets:      cfg.Audit.RedactSecrets,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠ failed to save audit record: %v\n", err)
 	}
 }
 

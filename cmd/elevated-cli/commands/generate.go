@@ -132,6 +132,9 @@ func newGenerateCmd() *cobra.Command {
 			// ── Display results ───────────────────────────────────────────
 			printReport(report, cfg.Output.Format, cfg.Output.ShowCode)
 
+			// ── Persist to the local audit trail ──────────────────────────
+			saveAuditRecord(cfg, report)
+
 			// ── Exit code based on verdict ────────────────────────────────
 			if report.Verdict == sec.VerdictRejected {
 				os.Exit(2) // exit 2 = security rejection (CI can check this)
