@@ -5,6 +5,8 @@
 //   - strict timeout via context
 //   - temp directory isolation
 //   - process group management for clean teardown
+//   - network isolation via unprivileged user+network namespaces (Linux)
+//     when block_network is enabled
 package sandbox
 
 import (
@@ -15,11 +17,39 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	sec "github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
 )
+
+// probeNetworkIsolation verifies that generated code can actually be cut off
+// from the network. It relies on unprivileged user+network namespaces via the
+// util-linux `unshare` utility (unshare -Un). Inside the fresh network
+// namespace no interface is up, so the child has no network access at all —
+// loopback included. The probe result is cached because spawning clone(2)
+// namespaces costs a subprocess. It is a package-level var so tests can inject
+// failures to exercise the fail-closed path.
+var probeNetworkIsolation = func() (bool, error) {
+	var once sync.Once
+	var ok bool
+	var probeErr error
+	once.Do(func() {
+		if _, err := exec.LookPath("unshare"); err != nil {
+			probeErr = fmt.Errorf("block_network requires the 'unshare' utility (util-linux): %w", err)
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := exec.CommandContext(ctx, "unshare", "-U", "-n", "--", "true").Run(); err != nil {
+			probeErr = fmt.Errorf("network isolation via unprivileged user/network namespace unavailable: %w", err)
+			return
+		}
+		ok = true
+	})
+	return ok, probeErr
+}
 
 // ProcessRunner executes code in a restricted child process.
 // It is safe to use on all platforms. For production Linux deployments
@@ -71,6 +101,19 @@ func (r *ProcessRunner) Run(ctx context.Context, code, language string) (sec.San
 			SkipReason: fmt.Sprintf("unsupported language for sandbox: %s", language),
 			Mode:       "process",
 		}, nil
+	}
+
+	// Apply network isolation. Fails closed: if block_network is requested but
+	// the platform or kernel cannot provide a fresh network namespace, the
+	// generated code must not run with host network access.
+	cmd, err = r.withNetworkIsolation(timeoutCtx, cmd)
+	if err != nil {
+		return sec.SandboxResult{
+			Executed:   false,
+			Skipped:    false,
+			SkipReason: fmt.Sprintf("network isolation unavailable: %v", err),
+			Mode:       "process",
+		}, err
 	}
 
 	// Apply process-level restrictions
