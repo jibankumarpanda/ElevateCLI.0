@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jibankumarpanda/ElevateCLI.0/internal/util"
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/utils"
 	sec "github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
 	_ "modernc.org/sqlite"
 )
@@ -108,19 +108,19 @@ func (s *SQLiteDB) SaveReport(report sec.Report, opts SaveOptions) error {
 // never modified.
 func sanitizeReport(r sec.Report, o SaveOptions) sec.Report {
 	if o.RedactSecrets {
-		r.Prompt = utils.RedactSecrets(r.Prompt)
-		r.GeneratedCode = utils.RedactSecrets(r.GeneratedCode)
+		r.Prompt = util.RedactSecrets(r.Prompt)
+		r.GeneratedCode = util.RedactSecrets(r.GeneratedCode)
 		for i := range r.Findings {
-			r.Findings[i].Code = utils.RedactSecrets(r.Findings[i].Code)
-			r.Findings[i].Title = utils.RedactSecrets(r.Findings[i].Title)
-			r.Findings[i].Description = utils.RedactSecrets(r.Findings[i].Description)
+			r.Findings[i].Code = util.RedactSecrets(r.Findings[i].Code)
+			r.Findings[i].Title = util.RedactSecrets(r.Findings[i].Title)
+			r.Findings[i].Description = util.RedactSecrets(r.Findings[i].Description)
 		}
 		for i := range r.Violations {
-			r.Violations[i].Value = utils.RedactSecrets(r.Violations[i].Value)
-			r.Violations[i].Description = utils.RedactSecrets(r.Violations[i].Description)
+			r.Violations[i].Value = util.RedactSecrets(r.Violations[i].Value)
+			r.Violations[i].Description = util.RedactSecrets(r.Violations[i].Description)
 		}
-		r.Sandbox.Stdout = utils.RedactSecrets(r.Sandbox.Stdout)
-		r.Sandbox.Stderr = utils.RedactSecrets(r.Sandbox.Stderr)
+		r.Sandbox.Stdout = util.RedactSecrets(r.Sandbox.Stdout)
+		r.Sandbox.Stderr = util.RedactSecrets(r.Sandbox.Stderr)
 	}
 	if !o.StorePrompts {
 		r.Prompt = ""
