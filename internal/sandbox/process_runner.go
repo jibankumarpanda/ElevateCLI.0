@@ -119,8 +119,8 @@ func (r *ProcessRunner) Run(ctx context.Context, code, language string) (sec.San
 		}, err
 	}
 
-	// Apply process-level restrictions
-	applyRestrictions(cmd)
+	// Apply process-level restrictions (resource limits, process group, scrubbed env).
+	applyRestrictions(cmd, r.maxMemoryMB)
 
 	// Execute
 	output, runErr := cmd.CombinedOutput()
@@ -225,17 +225,20 @@ func ensureInside(file, dir string) error {
 }
 
 // applyRestrictions sets syscall-level process isolation where available.
-func applyRestrictions(cmd *exec.Cmd) {
+// maxMemoryMB > 0 is enforced on Linux via RLIMIT_AS (virtual address space)
+// so generated code that tries to allocate more memory than configured fails
+// instead of exhausting the host.
+func applyRestrictions(cmd *exec.Cmd, maxMemoryMB int) {
 	if runtime.GOOS == "linux" {
 		// Create new process group so we can kill the whole tree
-		// Use network and mount namespace isolation on Linux
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			Setpgid: true,
-			// Uncomment for stronger isolation (requires root or user namespaces):
-			// Cloneflags: syscall.CLONE_NEWNS | syscall.CLONE_NEWNET | syscall.CLONE_NEWPID,
+			// Rlimits are applied in the child before exec; every process the
+			// generated program spawns inherits them.
+			Rlimits: linuxResourceLimits(maxMemoryMB),
 		}
 	} else {
-		// macOS / Windows: new process group only
+		// macOS / Windows: new process group only. RLIMIT_AS is not available.
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			Setpgid: true,
 		}
@@ -247,6 +250,18 @@ func applyRestrictions(cmd *exec.Cmd) {
 		"PATH=/usr/local/go/bin:/usr/bin:/bin",
 		"TMPDIR=/tmp",
 	}
+}
+
+// linuxResourceLimits returns the syscall resource limits to impose on the
+// sandboxed child when running on Linux.
+func linuxResourceLimits(maxMemoryMB int) []syscall.Rlimit {
+	if maxMemoryMB <= 0 {
+		return nil
+	}
+	// RLIMIT_AS caps the process address space, the memory control that is
+	// uniformly enforced by the kernel for every process it spawns.
+	bytes := uint64(maxMemoryMB) * 1024 * 1024
+	return []syscall.Rlimit{{Resource: syscall.RLIMIT_AS, Cur: bytes, Max: bytes}}
 }
 
 // withNetworkIsolation wraps cmd so the generated code runs in a fresh network
