@@ -1,5 +1,5 @@
-// Package utils provides small, dependency-free helpers shared across packages.
-package utils
+// Package util provides small, dependency-free helpers shared across packages.
+package util
 
 import (
 	"regexp"

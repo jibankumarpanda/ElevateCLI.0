@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jibankumarpanda/ElevateCLI.0/internal/utils"
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/util"
 	sec "github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
 	_ "modernc.org/sqlite"
 )
