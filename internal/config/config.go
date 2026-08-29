@@ -14,6 +14,7 @@ type Config struct {
 	Database DatabaseConfig `mapstructure:"database"`
 	Sandbox  SandboxConfig  `mapstructure:"sandbox"`
 	Output   OutputConfig   `mapstructure:"output"`
+	Audit    AuditConfig    `mapstructure:"audit"`
 	Logger   LoggerConfig   `mapstructure:"logger"`
 	Policy   PolicyConfig   `mapstructure:"policy"`
 	Scoring  ScoringConfig  `mapstructure:"scoring"`
