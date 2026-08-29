@@ -571,11 +571,11 @@ For production execution of untrusted code, use a verified isolation system such
 
 ### Firecracker Fallback Behavior
 
-`firecracker` may be accepted as a configuration value and has an implementation stub, but microVM execution is not operational until the runtime is fully configured and verified. Current fallback behavior uses the process runner and does not provide hardware-level isolation.
+`firecracker` is accepted as a configuration value, but microVM execution is not yet operational. When `sandbox.mode: firecracker` is selected, ElevatedCLI **fails closed**: the requested microVM boundary is never silently replaced with host `os/exec` execution. The pipeline returns an `ANALYSIS_INCOMPLETE` verdict with a clear explanation that the Firecracker runtime is unavailable, instead of claiming a controlled run happened inside a microVM.
 
-A future hardened implementation must fail closed when `sandbox.mode: firecracker` is selected but Firecracker is unavailable. It must never silently substitute host process execution for a requested microVM boundary.
+> The `docker` sandbox mode is likewise not implemented and fails closed with `ANALYSIS_INCOMPLETE` rather than silently running on the host.
 
-> This fail-closed behavior is not yet implemented. The current stub silently falls back to host process execution.
+Once microVM orchestration is implemented (via `firecracker-go-sdk`), a requested `sandbox.mode: firecracker` will boot a real microVM. Until then, no configuration value can silently downgrade to the process runner: the only way to use the process runner is to configure `sandbox.mode: process` explicitly.
 
 ### Execution-Skipped Behavior
 
@@ -1112,7 +1112,7 @@ Before a release should be considered secure enough for broader internal testing
 - [x] Structured reporting and SQLite history
 - [x] Controlled local process execution with timeout and environment scrubbing
 - [ ] Firecracker or gVisor hardened isolation
-- [ ] No silent fallback from requested microVM isolation to host `os/exec`
+- [x] No silent fallback from requested microVM isolation to host `os/exec` (fail-closed now enforced)
 - [ ] Enforced CPU, memory, process, output, filesystem, and network controls
 - [ ] Verified secret-redaction and retention controls
 - [ ] Hostile-code and sandbox-escape test coverage
