@@ -266,3 +266,128 @@ func TestRunFailsClosedWhenNetworkIsolationUnavailable(t *testing.T) {
 		t.Errorf("control result unexpected: %+v", cres)
 	}
 }
+
+// TestRunScrubsEnvironment verifies that host environment variables (which may
+// hold API keys, tokens, and other secrets) never reach the generated code.
+func TestRunScrubsEnvironment(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not installed")
+	}
+	const secret = "SUPER-SECRET-ENV-VALUE-xyzzy"
+	t.Setenv("ELEVATED_SECRET_FIXTURE", secret)
+
+	code := `import os
+print("LEAKED" if "ELEVATED_SECRET_FIXTURE" in os.environ else "CLEAN")
+print("HOME_INVALID" if os.environ.get("HOME") != "/tmp" else "HOME_OK")
+`
+	r := NewProcessRunner(10, 256, false)
+	res, err := r.Run(context.Background(), code, "python")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !res.Executed || !res.Success {
+		t.Fatalf("run failed: %+v", res)
+	}
+	if strings.Contains(res.Stdout, "LEAKED") || strings.Contains(res.Stdout, secret) {
+		t.Errorf("host environment leaked into sandbox: stdout=%q", res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, "HOME_OK") {
+		t.Errorf("scrubbed environment not applied: stdout=%q", res.Stdout)
+	}
+}
+
+// TestRunCleansTempDir verifies the disposable working directory is removed
+// after execution, leaving no artifacts behind.
+func TestRunCleansTempDir(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not installed")
+	}
+	count := func() int {
+		entries, err := os.ReadDir(os.TempDir())
+		if err != nil {
+			t.Fatalf("ReadDir: %v", err)
+		}
+		n := 0
+		for _, e := range entries {
+			if strings.HasPrefix(e.Name(), "elevated-sandbox-") {
+				n++
+			}
+		}
+		return n
+	}
+
+	before := count()
+	r := NewProcessRunner(10, 256, false)
+	res, err := r.Run(context.Background(), "print('cleanup-check')", "python")
+	if err != nil || !res.Success {
+		t.Fatalf("Run: %v %+v", err, res)
+	}
+	after := count()
+	if after != before {
+		t.Errorf("temp dir count changed: before=%d after=%d (leaked sandbox dir)", before, after)
+	}
+}
+
+// TestRunTimeoutKillsRunawayProcess verifies an infinite loop is terminated by
+// the timeout instead of hanging the CLI.
+func TestRunTimeoutKillsRunawayProcess(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not installed")
+	}
+	start := time.Now()
+	r := NewProcessRunner(2, 256, false)
+	res, err := r.Run(context.Background(), "while True: pass", "python")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !res.Executed {
+		t.Fatalf("run should have executed, got %+v", res)
+	}
+	if res.Success {
+		t.Error("runaway process reported success")
+	}
+	if time.Since(start) > 10*time.Second {
+		t.Errorf("timeout did not terminate the runaway process promptly (took %v)", time.Since(start))
+	}
+	hasTimeout := false
+	for _, m := range res.RuntimeErrors {
+		if strings.Contains(m, "timed out") {
+			hasTimeout = true
+		}
+	}
+	if !hasTimeout {
+		t.Errorf("expected a timeout runtime error, got %+v", res.RuntimeErrors)
+	}
+}
+
+// TestRunEnforcesMemoryLimit verifies generated code that exceeds the
+// configured address-space cap is stopped instead of exhausting the host.
+func TestRunEnforcesMemoryLimit(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not installed")
+	}
+	if _, err := exec.LookPath("prlimit"); err != nil {
+		t.Skip("prlimit not installed")
+	}
+	if runtime.GOOS != "linux" {
+		t.Skip("memory limits are enforced on Linux only")
+	}
+
+	// 64 MiB cap; the allocation requests 512 MiB, so it must fail.
+	r := NewProcessRunner(15, 64, false)
+	res, err := r.Run(context.Background(),
+		"import sys\nprint('BIG-BALLOC: attempted 512MiB')\nsys.stdout.flush()\nb = bytearray(512 * 1024 * 1024)\nprint('UNEXPECTED-SUCCESS')\n",
+		"python")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !res.Executed {
+		t.Fatalf("run should have executed, got %+v", res)
+	}
+	if res.Success {
+		t.Errorf("oversized allocation reported success: %+v", res)
+	}
+	if strings.Contains(res.Stdout, "UNEXPECTED-SUCCESS") {
+		t.Errorf("generated code allocated past its memory cap: %q", res.Stdout)
+	}
+}
