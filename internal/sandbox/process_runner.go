@@ -119,8 +119,20 @@ func (r *ProcessRunner) Run(ctx context.Context, code, language string) (sec.San
 		}, err
 	}
 
-	// Apply process-level restrictions (resource limits, process group, scrubbed env).
-	applyRestrictions(cmd, r.maxMemoryMB)
+	// Apply the configured memory limit. Fails closed on platforms or runtimes
+	// that cannot enforce it, so a configured limit is never silently ignored.
+	cmd, err = r.withMemoryLimit(timeoutCtx, cmd)
+	if err != nil {
+		return sec.SandboxResult{
+			Executed:   false,
+			Skipped:    false,
+			SkipReason: fmt.Sprintf("memory limit unavailable: %v", err),
+			Mode:       "process",
+		}, err
+	}
+
+	// Apply process-level restrictions (process group, scrubbed environment).
+	applyRestrictions(cmd)
 
 	// Execute
 	output, runErr := cmd.CombinedOutput()
@@ -224,24 +236,14 @@ func ensureInside(file, dir string) error {
 	return nil
 }
 
-// applyRestrictions sets syscall-level process isolation where available.
-// maxMemoryMB > 0 is enforced on Linux via RLIMIT_AS (virtual address space)
-// so generated code that tries to allocate more memory than configured fails
-// instead of exhausting the host.
-func applyRestrictions(cmd *exec.Cmd, maxMemoryMB int) {
-	if runtime.GOOS == "linux" {
-		// Create new process group so we can kill the whole tree
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			Setpgid: true,
-			// Rlimits are applied in the child before exec; every process the
-			// generated program spawns inherits them.
-			Rlimits: linuxResourceLimits(maxMemoryMB),
-		}
-	} else {
-		// macOS / Windows: new process group only. RLIMIT_AS is not available.
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			Setpgid: true,
-		}
+// applyRestrictions sets process-level safeguards (new process group for
+// teardown, minimal scrubbed environment). Address-space limits and network
+// namespaces are applied separately because they can require wrappers
+// (prlimit / unshare) and must fail closed rather than be silently ignored.
+func applyRestrictions(cmd *exec.Cmd) {
+	// Create new process group so we can kill the whole tree
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
 	}
 
 	// Minimal environment — no access to user's env vars (secrets, tokens)
@@ -252,16 +254,33 @@ func applyRestrictions(cmd *exec.Cmd, maxMemoryMB int) {
 	}
 }
 
-// linuxResourceLimits returns the syscall resource limits to impose on the
-// sandboxed child when running on Linux.
-func linuxResourceLimits(maxMemoryMB int) []syscall.Rlimit {
-	if maxMemoryMB <= 0 {
-		return nil
+// withMemoryLimit wraps cmd with prlimit --as so the sandboxed process cannot
+// exceed the configured address-space limit. It fails closed: if the platform
+// or runtime cannot enforce the limit, an error is returned and generated code
+// is not executed with an ignored memory cap. maxMemoryMB <= 0 means "no limit".
+func (r *ProcessRunner) withMemoryLimit(ctx context.Context, cmd *exec.Cmd) (*exec.Cmd, error) {
+	if r.maxMemoryMB <= 0 {
+		return cmd, nil
 	}
-	// RLIMIT_AS caps the process address space, the memory control that is
-	// uniformly enforced by the kernel for every process it spawns.
-	bytes := uint64(maxMemoryMB) * 1024 * 1024
-	return []syscall.Rlimit{{Resource: syscall.RLIMIT_AS, Cur: bytes, Max: bytes}}
+	if runtime.GOOS != "linux" {
+		return nil, fmt.Errorf("memory limits cannot be enforced on %s: sandbox.max_memory_mb is a hard cap, not a hint", runtime.GOOS)
+	}
+	if _, err := exec.LookPath("prlimit"); err != nil {
+		return nil, fmt.Errorf("max_memory_mb requires the 'prlimit' utility (util-linux): %w", err)
+	}
+
+	bytes := uint64(r.maxMemoryMB) * 1024 * 1024
+	argv := make([]string, 0, len(cmd.Args)+4)
+	argv = append(argv, "prlimit", "--as="+fmt.Sprintf("%d", bytes), "--")
+	argv = append(argv, cmd.Args...)
+
+	// #nosec G204 -- argv is assembled from fixed per-language commands plus
+	// the pre-verified prlimit wrapper; generated code is written to a file,
+	// never interpolated into command arguments.
+	wrapped := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	wrapped.Dir = cmd.Dir
+	wrapped.Env = cmd.Env
+	return wrapped, nil
 }
 
 // withNetworkIsolation wraps cmd so the generated code runs in a fresh network
