@@ -98,6 +98,7 @@ It provides:
 - Process-group termination for child-process cleanup
 - Path-traversal prevention for generated files
 - Network isolation on Linux via unprivileged user+network namespaces when `block_network: true` (fails closed if isolation is unavailable)
+- Memory-limit enforcement on Linux via `prlimit --as` when `max_memory_mb` is set (fails closed if the limit cannot be enforced)
 
 It does **not** provide a hardened isolation boundary against hostile code. In particular, it does not currently enforce:
 
@@ -106,8 +107,7 @@ It does **not** provide a hardened isolation boundary against hostile code. In p
 - Kernel-level filesystem isolation
 - Syscall filtering (seccomp)
 - Enforced CPU limits
-- Enforced memory limits
-- Enforced process-count limits
+- Enforced process-count limits (the memory limit is enforced via `RLIMIT_AS`)
 - Prevention of kernel-level, host-level, or same-user attacks
 
 > The process runner is intended only for controlled local development. Do not treat it as a sandbox for malicious or fully untrusted code.
@@ -268,15 +268,20 @@ ai:
   timeout_sec: 120
 
 sandbox:
-  mode: process # process | firecracker | skip
+  mode: process # process | firecracker | docker | skip
   timeout_sec: 10
-  max_memory_mb: 256 # Configuration only; runtime enforcement not yet verified
+  max_memory_mb: 256 # Enforced on Linux via prlimit; fails closed when it cannot be enforced
   block_network: true # Runtime-enforced on Linux via user+network namespaces; fails closed when unavailable
 
 output:
   format: rich # rich | json | sarif | plain
   show_code: false
   audit_db: secure-ai.db # SQLite audit-database path
+
+audit:
+  store_prompts: true # Retain raw prompts in history (disable for strict retention)
+  store_generated_code: true # Retain generated source in history (disable for strict retention)
+  redact_secrets: true # Redact detected credentials before anything is written to disk
 
 scoring:
   sast_weight: 0.40
@@ -769,13 +774,16 @@ export SECURE_AI_ANALYSIS_OSV_SCANNER="true"
 | `ai.api_key` | `""` | API credential; prefer environment variables |
 | `ai.endpoint` | `http://localhost:11434` | Local provider endpoint |
 | `ai.timeout_sec` | `120` | LLM request timeout |
-| `sandbox.mode` | `process` | `process`, `firecracker`, or `skip` |
+| `sandbox.mode` | `process` | `process`, `firecracker`, `docker`, or `skip` |
 | `sandbox.timeout_sec` | `10` | Controlled-execution timeout |
-| `sandbox.max_memory_mb` | `256` | Configuration value; runtime enforcement not yet verified |
+| `sandbox.max_memory_mb` | `256` | Enforced on Linux via `prlimit --as`; fails closed when it cannot be enforced |
 | `sandbox.block_network` | `true` | Enforced on Linux via user+network namespaces; fails closed when isolation is unavailable |
 | `output.format` | `rich` | `rich`, `json`, `sarif`, or `plain` |
 | `output.show_code` | `false` | Include source snippets in report output |
 | `output.audit_db` | `secure-ai.db` | SQLite audit-database path |
+| `audit.store_prompts` | `true` | Retain raw prompts in scan history |
+| `audit.store_generated_code` | `true` | Retain generated source in scan history |
+| `audit.redact_secrets` | `true` | Redact detected credentials before writing history |
 | `logger.level` | `info` | `debug`, `info`, `warn`, or `error` |
 | `logger.format` | `console` | `console` or `json` |
 | `logger.file` | `""` | Optional log-file path |
@@ -854,21 +862,29 @@ The following are **not** stored:
 - API keys, tokens, or cookies
 - Environment variables or secret values
 
-> **Privacy limitation:** Raw prompts and generated source code are stored by default. Prompts may contain sensitive information such as business logic, internal API designs, or proprietary requirements. Generated code may contain secrets introduced by the LLM. There is currently no configuration option to disable prompt or source retention. Review this behavior before using ElevatedCLI in an organization with strict data-retention policies.
+### Retention and Redaction Controls
 
-### Recommended Future Configuration
-
-When implemented, the following configuration options would provide finer control:
+The default behavior above can be tightened through the `audit` configuration
+section. These controls are implemented and honoured every time a report is
+written to the audit database:
 
 ```yaml
 audit:
-  store_prompts: false
-  store_generated_code: false
-  redact_secrets: true
-  retention_days: 30
+  store_prompts: false          # drop the prompt column and prompt from the stored report
+  store_generated_code: false   # drop generated source from the stored report
+  redact_secrets: true          # rewrite detected credentials as [REDACTED] before writing
 ```
 
-> These configuration fields are not yet implemented. They represent a recommended future schema.
+`redact_secrets` is enabled by default: known credential shapes (API keys,
+password/secret/token assignments, bearer tokens, AWS keys, PEM private keys)
+are replaced with `[REDACTED]` in stored prompts, generated source, findings,
+and sandbox output before anything touches disk. The in-memory report used for
+terminal/JSON/SARIF output is never modified.
+
+> **Privacy note:** Prompts and generated code are stored by default. Prompts
+> may contain sensitive information such as business logic, internal API
+> designs, or proprietary requirements. For strict data-retention orgs, set
+> `audit.store_prompts: false` and `audit.store_generated_code: false`.
 
 ### Operational Recommendations
 
@@ -1111,11 +1127,12 @@ Before a release should be considered secure enough for broader internal testing
 - [x] Deterministic scoring
 - [x] Structured reporting and SQLite history
 - [x] Controlled local process execution with timeout and environment scrubbing
-- [ ] Firecracker or gVisor hardened isolation
 - [x] No silent fallback from requested microVM isolation to host `os/exec` (fail-closed now enforced)
-- [ ] Enforced CPU, memory, process, output, filesystem, and network controls
-- [ ] Verified secret-redaction and retention controls
-- [ ] Hostile-code and sandbox-escape test coverage
+- [x] Secret redaction and retention controls (`audit.store_prompts`, `store_generated_code`, `redact_secrets`; redaction on by default)
+- [x] Enforced memory control (`prlimit --as` on Linux, fails closed) and network control (`unshare -U -n`, fails closed)
+- [ ] Firecracker or gVisor hardened isolation
+- [ ] Enforced CPU, process-count, output, and filesystem-control limits
+- [ ] Hostile-code / sandbox-escape test coverage for a hardened runtime (process-runner hostile-code coverage: env scrubbing, containment, timeout, memory-limit — implemented)
 - [ ] Independent security review of the execution backend
 - [ ] Correct exit codes for `BLOCKED`, `ANALYSIS_INCOMPLETE`, and `EXECUTION_FAILED`
 
