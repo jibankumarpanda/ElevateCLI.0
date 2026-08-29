@@ -2,9 +2,13 @@ package sandbox
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -147,7 +151,7 @@ func TestRunPythonIntegration(t *testing.T) {
 	if _, err := exec.LookPath(bin); err != nil {
 		t.Skip("python3 not installed")
 	}
-	r := NewProcessRunner(10, 256, true)
+	r := NewProcessRunner(10, 256, false)
 	result, err := r.Run(context.Background(), "print('elevated-ok')", "python")
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -157,5 +161,108 @@ func TestRunPythonIntegration(t *testing.T) {
 	}
 	if result.Stdout != "elevated-ok\n" {
 		t.Errorf("Stdout = %q, want %q", result.Stdout, "elevated-ok\n")
+	}
+}
+
+func TestRunPythonIntegrationWithNetworkIsolation(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not installed")
+	}
+	if ok, err := probeNetworkIsolation(); !ok {
+		t.Skipf("network isolation unavailable: %v", err)
+	}
+	r := NewProcessRunner(10, 256, true)
+	result, err := r.Run(context.Background(), "print('elevated-ok')", "python")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !result.Executed || !result.Success {
+		t.Fatalf("expected successful execution under isolation, got %+v", result)
+	}
+	if result.Stdout != "elevated-ok\n" {
+		t.Errorf("Stdout = %q, want %q", result.Stdout, "elevated-ok\n")
+	}
+}
+
+func TestNetworkIsolationBlocksConnectivity(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not installed")
+	}
+	if ok, err := probeNetworkIsolation(); !ok {
+		t.Skipf("network isolation unavailable: %v", err)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Skipf("cannot open a loopback listener: %v", err)
+	}
+	defer ln.Close()
+	port := ln.Addr().(*net.TCPAddr).Port
+
+	snippet := fmt.Sprintf(`import socket
+try:
+    socket.create_connection(("127.0.0.1", %d), timeout=3).close()
+    print("CONNECTED")
+except OSError:
+    print("BLOCKED")
+`, port)
+
+	// With block_network=true the child must not reach the listener.
+	isolated := NewProcessRunner(10, 256, true)
+	ires, err := isolated.Run(context.Background(), snippet, "python")
+	if err != nil {
+		t.Fatalf("isolated Run: %v", err)
+	}
+	if !ires.Executed || !ires.Success {
+		t.Fatalf("isolated run should execute, got %+v", ires)
+	}
+	if !strings.Contains(ires.Stdout, "BLOCKED") {
+		t.Errorf("network NOT blocked under block_network=true; stdout=%q", ires.Stdout)
+	}
+
+	// Control: with block_network=false the same code must connect.
+	open := NewProcessRunner(10, 256, false)
+	cres, err := open.Run(context.Background(), snippet, "python")
+	if err != nil {
+		t.Fatalf("control Run: %v", err)
+	}
+	if !cres.Executed || !cres.Success {
+		t.Fatalf("control run should execute, got %+v", cres)
+	}
+	if !strings.Contains(cres.Stdout, "CONNECTED") {
+		t.Errorf("control could not connect without isolation; stdout=%q", cres.Stdout)
+	}
+}
+
+func TestRunFailsClosedWhenNetworkIsolationUnavailable(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not installed")
+	}
+
+	orig := probeNetworkIsolation
+	probeNetworkIsolation = func() (bool, error) {
+		return false, errors.New("simulated namespace failure")
+	}
+	t.Cleanup(func() { probeNetworkIsolation = orig })
+
+	r := NewProcessRunner(5, 256, true)
+	result, err := r.Run(context.Background(), "print('should not run')", "python")
+	if err == nil {
+		t.Fatal("expected an error when network isolation is requested but unavailable")
+	}
+	if result.Executed {
+		t.Error("must not execute generated code when isolation is unavailable")
+	}
+	if result.Skipped {
+		t.Error("unavailable isolation is a failure, not a deliberate skip")
+	}
+
+	ctrl := NewProcessRunner(5, 256, false)
+	cres, err := ctrl.Run(context.Background(), "print('elevated-ok')", "python")
+	if err != nil {
+		t.Fatalf("control Run with block_network=false should succeed: %v", err)
+	}
+	if !cres.Executed || !cres.Success || cres.Stdout != "elevated-ok\n" {
+		t.Errorf("control result unexpected: %+v", cres)
 	}
 }

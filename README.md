@@ -97,17 +97,17 @@ It provides:
 - Scrubbed environment variables (minimal `HOME`, `PATH`, `TMPDIR`)
 - Process-group termination for child-process cleanup
 - Path-traversal prevention for generated files
+- Network isolation on Linux via unprivileged user+network namespaces when `block_network: true` (fails closed if isolation is unavailable)
 
 It does **not** provide a hardened isolation boundary against hostile code. In particular, it does not currently enforce:
 
 - Hardware virtualization or a microVM boundary
-- Container or user-namespace isolation
+- Full container isolation (user namespaces are used only to create an isolated network namespace for `block_network`)
 - Kernel-level filesystem isolation
 - Syscall filtering (seccomp)
 - Enforced CPU limits
 - Enforced memory limits
 - Enforced process-count limits
-- Network-deny enforcement at the kernel level
 - Prevention of kernel-level, host-level, or same-user attacks
 
 > The process runner is intended only for controlled local development. Do not treat it as a sandbox for malicious or fully untrusted code.
@@ -271,7 +271,7 @@ sandbox:
   mode: process # process | firecracker | skip
   timeout_sec: 10
   max_memory_mb: 256 # Configuration only; runtime enforcement not yet verified
-  block_network: true # Configuration only; runtime enforcement not yet verified
+  block_network: true # Runtime-enforced on Linux via user+network namespaces; fails closed when unavailable
 
 output:
   format: rich # rich | json | sarif | plain
@@ -772,7 +772,7 @@ export SECURE_AI_ANALYSIS_OSV_SCANNER="true"
 | `sandbox.mode` | `process` | `process`, `firecracker`, or `skip` |
 | `sandbox.timeout_sec` | `10` | Controlled-execution timeout |
 | `sandbox.max_memory_mb` | `256` | Configuration value; runtime enforcement not yet verified |
-| `sandbox.block_network` | `true` | Configuration value; runtime enforcement not yet verified |
+| `sandbox.block_network` | `true` | Enforced on Linux via user+network namespaces; fails closed when isolation is unavailable |
 | `output.format` | `rich` | `rich`, `json`, `sarif`, or `plain` |
 | `output.show_code` | `false` | Include source snippets in report output |
 | `output.audit_db` | `secure-ai.db` | SQLite audit-database path |
@@ -1088,6 +1088,7 @@ Before a release should be considered secure enough for broader internal testing
 - Context timeout handling
 - Process-tree cleanup
 - Environment and secret isolation
+- Network-denial enforcement (`block_network`) and fail-closed behavior when isolation is unavailable
 - Score calculations
 - Verdict precedence over scores
 - Audit-log redaction

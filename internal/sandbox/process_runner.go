@@ -29,26 +29,29 @@ import (
 // util-linux `unshare` utility (unshare -Un). Inside the fresh network
 // namespace no interface is up, so the child has no network access at all —
 // loopback included. The probe result is cached because spawning clone(2)
-// namespaces costs a subprocess. It is a package-level var so tests can inject
-// failures to exercise the fail-closed path.
+// namespaces costs a subprocess. probeNetworkIsolation is a package-level var
+// so tests can inject failures to exercise the fail-closed path.
+var (
+	netProbeOnce sync.Once
+	netProbeOK   bool
+	netProbeErr  error
+)
+
 var probeNetworkIsolation = func() (bool, error) {
-	var once sync.Once
-	var ok bool
-	var probeErr error
-	once.Do(func() {
+	netProbeOnce.Do(func() {
 		if _, err := exec.LookPath("unshare"); err != nil {
-			probeErr = fmt.Errorf("block_network requires the 'unshare' utility (util-linux): %w", err)
+			netProbeErr = fmt.Errorf("block_network requires the 'unshare' utility (util-linux): %w", err)
 			return
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := exec.CommandContext(ctx, "unshare", "-U", "-n", "--", "true").Run(); err != nil {
-			probeErr = fmt.Errorf("network isolation via unprivileged user/network namespace unavailable: %w", err)
+			netProbeErr = fmt.Errorf("network isolation via unprivileged user/network namespace unavailable: %w", err)
 			return
 		}
-		ok = true
+		netProbeOK = true
 	})
-	return ok, probeErr
+	return netProbeOK, netProbeErr
 }
 
 // ProcessRunner executes code in a restricted child process.
@@ -244,6 +247,36 @@ func applyRestrictions(cmd *exec.Cmd) {
 		"PATH=/usr/local/go/bin:/usr/bin:/bin",
 		"TMPDIR=/tmp",
 	}
+}
+
+// withNetworkIsolation wraps cmd so the generated code runs in a fresh network
+// namespace when network blocking is enabled. It fails closed: on platforms
+// that cannot provide namespace isolation (macOS, Windows) or when the kernel
+// rejects unprivileged name spaces, it returns an error so the caller must not
+// proceed to execute the code with host network access.
+func (r *ProcessRunner) withNetworkIsolation(ctx context.Context, cmd *exec.Cmd) (*exec.Cmd, error) {
+	if !r.blockNet {
+		return cmd, nil
+	}
+	if runtime.GOOS != "linux" {
+		return nil, fmt.Errorf("block_network cannot be enforced on %s: set block_network: false or use a hardened runtime (Firecracker/gVisor)", runtime.GOOS)
+	}
+	if ok, err := probeNetworkIsolation(); !ok {
+		return nil, err
+	}
+
+	argv := make([]string, 0, len(cmd.Args)+4)
+	argv = append(argv, "unshare", "-U", "-n", "--")
+	argv = append(argv, cmd.Args...)
+
+	// #nosec G204 -- argv is assembled from a fixed per-language allowlist in
+	// buildCommand ("unshare -U -n --" + "go run main.go" / "python3 main.py" /
+	// ...). Generated code content is written to a file, never interpolated
+	// into command arguments, and the working directory is a fresh temp dir.
+	wrapped := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	wrapped.Dir = cmd.Dir
+	wrapped.Env = cmd.Env
+	return wrapped, nil
 }
 
 // langToExt maps a language name to its source file extension.
