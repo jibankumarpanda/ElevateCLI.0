@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/utils"
 	sec "github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
 	_ "modernc.org/sqlite"
 )
@@ -56,8 +57,27 @@ func (s *SQLiteDB) initSchema() error {
 	return err
 }
 
-// SaveReport persists a full scan report.
-func (s *SQLiteDB) SaveReport(report sec.Report) error {
+// SaveOptions controls what the audit trail retains. Prompts and generated
+// source may contain sensitive data, so callers decide whether to keep them
+// and whether to redact detected secrets before anything is written to disk.
+type SaveOptions struct {
+	StorePrompts       bool
+	StoreGeneratedCode bool
+	RedactSecrets      bool
+}
+
+// DefaultSaveOptions mirrors the documented defaults: keep prompts and code
+// (as before) but redact secrets before storage.
+func DefaultSaveOptions() SaveOptions {
+	return SaveOptions{StorePrompts: true, StoreGeneratedCode: true, RedactSecrets: true}
+}
+
+// SaveReport persists a sanitised copy of the report according to opts.
+// Secrets are redacted and prompts/code may be dropped before the row is
+// written, so the on-disk copy never contains raw credentials the caller
+// asked to hide.
+func (s *SQLiteDB) SaveReport(report sec.Report, opts SaveOptions) error {
+	report = sanitizeReport(report, opts)
 	blob, err := json.Marshal(report)
 	if err != nil {
 		return fmt.Errorf("marshalling report: %w", err)
@@ -81,6 +101,34 @@ func (s *SQLiteDB) SaveReport(report sec.Report) error {
 		string(blob),
 	)
 	return err
+}
+
+// sanitizeReport returns a copy of r with secrets redacted and the prompt /
+// generated code dropped when retention is disabled. The original report is
+// never modified.
+func sanitizeReport(r sec.Report, o SaveOptions) sec.Report {
+	if o.RedactSecrets {
+		r.Prompt = utils.RedactSecrets(r.Prompt)
+		r.GeneratedCode = utils.RedactSecrets(r.GeneratedCode)
+		for i := range r.Findings {
+			r.Findings[i].Code = utils.RedactSecrets(r.Findings[i].Code)
+			r.Findings[i].Title = utils.RedactSecrets(r.Findings[i].Title)
+			r.Findings[i].Description = utils.RedactSecrets(r.Findings[i].Description)
+		}
+		for i := range r.Violations {
+			r.Violations[i].Value = utils.RedactSecrets(r.Violations[i].Value)
+			r.Violations[i].Description = utils.RedactSecrets(r.Violations[i].Description)
+		}
+		r.Sandbox.Stdout = utils.RedactSecrets(r.Sandbox.Stdout)
+		r.Sandbox.Stderr = utils.RedactSecrets(r.Sandbox.Stderr)
+	}
+	if !o.StorePrompts {
+		r.Prompt = ""
+	}
+	if !o.StoreGeneratedCode {
+		r.GeneratedCode = ""
+	}
+	return r
 }
 
 // GetReport loads a single report by scan ID.

@@ -50,6 +50,16 @@ type OutputConfig struct {
 	AuditDB  string `mapstructure:"audit_db"` // SQLite path for scan history
 }
 
+// AuditConfig controls what the local audit trail retains and how it is
+// sanitised before it is written to disk. Prompts and generated source may
+// contain business logic or secrets, so retention is configurable and secret
+// redaction is enabled by default.
+type AuditConfig struct {
+	StorePrompts       bool `mapstructure:"store_prompts"`       // default true
+	StoreGeneratedCode bool `mapstructure:"store_generated_code"` // default true
+	RedactSecrets      bool `mapstructure:"redact_secrets"`       // default true — redact before writing
+}
+
 // LoggerConfig mirrors the logger package's config for structured logging.
 type LoggerConfig struct {
 	Level      string `mapstructure:"level"`  // debug | info | warn | error
@@ -127,6 +137,9 @@ func Load(cfgFile string) (*Config, error) {
 	v.SetDefault("output.format", "rich")
 	v.SetDefault("output.show_code", false)
 	v.SetDefault("output.audit_db", "secure-ai.db")
+	v.SetDefault("audit.store_prompts", true)
+	v.SetDefault("audit.store_generated_code", true)
+	v.SetDefault("audit.redact_secrets", true)
 	v.SetDefault("logger.level", "info")
 	v.SetDefault("logger.format", "console")
 	v.SetDefault("logger.file", "")
