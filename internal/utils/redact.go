@@ -61,17 +61,17 @@ func redactAssignments(s string) string {
 // secretTokenPatterns replaces standalone credential tokens regardless of the
 // surrounding key name.
 var secretTokenPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`sk-[A-Za-z0-9_-]{16,}`),                          // OpenAI
-	regexp.MustCompile(`ghp_[A-Za-z0-9]{30,}`),                           // GitHub PAT
-	regexp.MustCompile(`github_pat_[A-Za-z0-9_]{20,}`),                   // GitHub fine-grained PAT
-	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),                               // AWS access key
-	regexp.MustCompile(`glpat-[A-Za-z0-9_-]{20,}`),                       // GitLab PAT
-	regexp.MustCompile(`xox[baprs]-[A-Za-z0-9-]{10,}`),                   // Slack tokens
-	regexp.MustCompile(`AIza[0-9A-Za-z_-]{20,}`),                         // Google API key
-	regexp.MustCompile(`ya29\.[0-9A-Za-z_-]+`),                           // Google OAuth
-	regexp.MustCompile(`gho_[A-Za-z0-9]{30,}`),                           // GitHub OAuth
-	regexp.MustCompile(`(?i)bearer [A-Za-z0-9-._~+/]+=*`),               // Bearer auth
-	regexp.MustCompile(`(?i)basic [a-z0-9+/]{8,}={0,2}`),                // Basic auth (base64)
+	regexp.MustCompile(`sk-[A-Za-z0-9_-]{16,}`),                                                      // OpenAI
+	regexp.MustCompile(`ghp_[A-Za-z0-9]{30,}`),                                                       // GitHub PAT
+	regexp.MustCompile(`github_pat_[A-Za-z0-9_]{20,}`),                                               // GitHub fine-grained PAT
+	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),                                                           // AWS access key
+	regexp.MustCompile(`glpat-[A-Za-z0-9_-]{20,}`),                                                   // GitLab PAT
+	regexp.MustCompile(`xox[baprs]-[A-Za-z0-9-]{10,}`),                                               // Slack tokens
+	regexp.MustCompile(`AIza[0-9A-Za-z_-]{20,}`),                                                     // Google API key
+	regexp.MustCompile(`ya29\.[0-9A-Za-z_-]+`),                                                       // Google OAuth
+	regexp.MustCompile(`gho_[A-Za-z0-9]{30,}`),                                                       // GitHub OAuth
+	regexp.MustCompile(`(?i)bearer [A-Za-z0-9-._~+/]+=*`),                                            // Bearer auth
+	regexp.MustCompile(`(?i)basic [a-z0-9+/]{8,}={0,2}`),                                             // Basic auth (base64)
 	regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----`), // PEM
 	regexp.MustCompile(`-----BEGIN [A-Z ]*CERTIFICATE-----[\s\S]*?-----END [A-Z ]*CERTIFICATE-----`), // PEM cert
 }

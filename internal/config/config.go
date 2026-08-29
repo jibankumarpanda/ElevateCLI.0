@@ -55,7 +55,7 @@ type OutputConfig struct {
 // contain business logic or secrets, so retention is configurable and secret
 // redaction is enabled by default.
 type AuditConfig struct {
-	StorePrompts       bool `mapstructure:"store_prompts"`       // default true
+	StorePrompts       bool `mapstructure:"store_prompts"`        // default true
 	StoreGeneratedCode bool `mapstructure:"store_generated_code"` // default true
 	RedactSecrets      bool `mapstructure:"redact_secrets"`       // default true — redact before writing
 }
