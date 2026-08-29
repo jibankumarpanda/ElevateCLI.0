@@ -88,6 +88,7 @@ func newAuditCmd() *cobra.Command {
 				}
 
 				printReport(report, outFmt, cfg.Output.ShowCode)
+				saveAuditRecord(cfg, report)
 
 				if report.Verdict == sec.VerdictRejected {
 					rejected++
