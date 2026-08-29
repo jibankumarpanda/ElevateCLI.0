@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/jibankumarpanda/ElevateCLI.0/internal/config"
 	"github.com/jibankumarpanda/ElevateCLI.0/internal/output"
@@ -35,14 +36,23 @@ func buildPipeline(cfg config.Config, runSandbox bool, srcDir string) (*security
 	} else {
 		switch cfg.Sandbox.Mode {
 		case "firecracker":
-			// Firecracker is implemented in internal/sandbox/firecracker_runner.go (batch 3)
-			// Fall back to process runner if Firecracker binary not found
-			sandboxRunner = sandbox.NewProcessRunner(
-				cfg.Sandbox.TimeoutSec,
-				cfg.Sandbox.MaxMemoryMB,
-				cfg.Sandbox.BlockNetwork,
-			)
-		default: // "process" or "docker" (docker wrapper is batch 3)
+			// Firecracker microVM execution fails closed: the runner returns an
+			// error when the runtime is unavailable or not yet implemented, so
+			// the pipeline marks the run ANALYSIS_INCOMPLETE instead of silently
+			// executing on the host with os/exec.
+			sandboxRunner = sandbox.NewFirecrackerRunner(sandbox.ResourceLimits{
+				MemoryMB: cfg.Sandbox.MaxMemoryMB,
+				Timeout:  time.Duration(cfg.Sandbox.TimeoutSec) * time.Second,
+				AllowNet: !cfg.Sandbox.BlockNetwork,
+			})
+		case "docker":
+			// Docker execution is documented as a config value but has no
+			// implemented runner. Fail closed (ANALYSIS_INCOMPLETE) rather than
+			// silently substituting host os/exec execution.
+			sandboxRunner = &unavailableSandbox{
+				reason: "sandbox.mode: docker is not implemented; no container runner is available",
+			}
+		default: // "process"
 			sandboxRunner = sandbox.NewProcessRunner(
 				cfg.Sandbox.TimeoutSec,
 				cfg.Sandbox.MaxMemoryMB,
@@ -73,4 +83,22 @@ func (n *noopSandbox) Run(_ context.Context, code, language string) (sec.Sandbox
 		SkipReason: "sandbox disabled via --no-sandbox flag or config",
 		Mode:       "none",
 	}, nil
+}
+
+// unavailableSandbox satisfies the SandboxRunner interface but always fails.
+// Used when a sandbox mode is configured that has no implemented runner
+// (currently "docker"). The pipeline treats the error as incomplete analysis
+// under fail-closed mode, so a missing runtime is never reported as a clean
+// or executed run.
+type unavailableSandbox struct {
+	reason string
+}
+
+func (u *unavailableSandbox) Run(_ context.Context, code, language string) (sec.SandboxResult, error) {
+	return sec.SandboxResult{
+		Executed:   false,
+		Skipped:    false,
+		SkipReason: u.reason,
+		Mode:       "unavailable",
+	}, fmt.Errorf("%s", u.reason)
 }
