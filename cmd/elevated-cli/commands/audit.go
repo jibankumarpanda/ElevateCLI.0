@@ -62,7 +62,10 @@ func newAuditCmd() *cobra.Command {
 				fmt.Fprintf(os.Stderr, "📂 Found %d files to audit in %s\n", len(files), dirPath)
 			}
 
-			var rejected int
+			var (
+				rejected   int
+				exitCode   = sec.ExitCodeOK
+			)
 			for _, f := range files {
 				// #nosec G304 -- auditing a user-specified file is the feature;
 				// paths come from --file/--dir CLI arguments, not file contents.
@@ -90,13 +93,19 @@ func newAuditCmd() *cobra.Command {
 				printReport(report, outFmt, cfg.Output.ShowCode)
 				saveAuditRecord(cfg, report)
 
-				if report.Verdict == sec.VerdictRejected {
+				// Any hard-stop verdict blocks the file. Track the worst
+				// (highest) exit code across all audited files so CI fails as
+				// loudly as the most severe unresolved issue.
+				if code := sec.ExitCodeFor(report.Verdict); code != sec.ExitCodeOK {
 					rejected++
+					if code > exitCode {
+						exitCode = code
+					}
 				}
 			}
 
 			if rejected > 0 {
-				os.Exit(2) // exit 2 = one or more files rejected
+				os.Exit(exitCode) // non-zero = one or more files blocked
 			}
 			return nil
 		},

@@ -136,8 +136,11 @@ func newGenerateCmd() *cobra.Command {
 			saveAuditRecord(cfg, report)
 
 			// ── Exit code based on verdict ────────────────────────────────
-			if report.Verdict == sec.VerdictRejected {
-				os.Exit(2) // exit 2 = security rejection (CI can check this)
+			// Every hard-stop verdict (REJECTED, BLOCKED, ANALYSIS_INCOMPLETE,
+			// EXECUTION_FAILED) exits non-zero so CI/CD gates on the outcome and
+			// can distinguish the cause via the specific code.
+			if code := sec.ExitCodeFor(report.Verdict); code != sec.ExitCodeOK {
+				os.Exit(code)
 			}
 
 			return nil
