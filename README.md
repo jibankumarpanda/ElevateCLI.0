@@ -830,7 +830,7 @@ policy:
 | `blocked_imports` | Denies listed package paths or import patterns |
 | `blocked_functions` | Denies listed function calls or qualified function patterns |
 | `require_error_handling` | Flags Go code that discards errors using `_` |
-| `max_cyclomatic_complexity` | Optional complexity threshold; verify enforcement status in the source |
+| `max_cyclomatic_complexity` | Flags Go functions whose cyclomatic complexity exceeds the threshold; `0` disables |
 
 A policy should support an action such as `warn` or `block`. Any rule configured with `block` should prevent execution and prevent an approving verdict.
 
@@ -958,11 +958,15 @@ Pin, test, and document compatible external-tool versions in CI before release.
 
 | Exit code | Meaning |
 |---:|---|
-| `0` | Verification completed with a non-blocking result (including `APPROVED`, `WARNING`, `BLOCKED`, and `EXECUTION_FAILED` — see note below) |
+| `0` | Verification completed with a non-blocking result (`APPROVED` or `WARNING`) |
 | `1` | CLI, input, configuration, database, or internal error |
-| `2` | Security pipeline returned `REJECTED` verdict |
+| `2` | Security pipeline returned `REJECTED` or `BLOCKED` verdict |
+| `3` | `ANALYSIS_INCOMPLETE` — a required verification control did not complete under fail-closed mode |
+| `4` | `EXECUTION_FAILED` — the sandbox ran the code and it failed at runtime |
 
-> ⚠️ **Known limitation:** The current implementation only exits with code 2 when the verdict is `REJECTED`. A `BLOCKED` verdict (critical finding or blocking policy violation) currently exits with code 0. This is inconsistent with the documented verdict priority and must be fixed before CI-gate adoption. Exit codes for `ANALYSIS_INCOMPLETE`, `BLOCKED`, and `EXECUTION_FAILED` are planned but not yet implemented.
+Every hard-stop verdict exits non-zero so CI/CD can gate on the outcome and
+distinguish the cause via the specific code. When auditing a directory, the
+highest (most severe) exit code across all files is returned.
 
 ---
 
@@ -1134,7 +1138,8 @@ Before a release should be considered secure enough for broader internal testing
 - [ ] Enforced CPU, process-count, output, and filesystem-control limits
 - [ ] Hostile-code / sandbox-escape test coverage for a hardened runtime (process-runner hostile-code coverage: env scrubbing, containment, timeout, memory-limit — implemented)
 - [ ] Independent security review of the execution backend
-- [ ] Correct exit codes for `BLOCKED`, `ANALYSIS_INCOMPLETE`, and `EXECUTION_FAILED`
+- [x] Correct exit codes for `BLOCKED`, `ANALYSIS_INCOMPLETE`, and `EXECUTION_FAILED`
+- [x] Enforced `max_cyclomatic_complexity` policy rule (Go, via go/ast)
 
 ### P1 — Secure MVP Improvements
 

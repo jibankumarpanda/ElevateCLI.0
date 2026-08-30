@@ -8,9 +8,9 @@ package security
 //	3  — ANALYSIS_INCOMPLETE: a required check could not complete (fail-closed)
 //	4  — EXECUTION_FAILED: the sandbox ran the code and it failed at runtime
 const (
-	ExitCodeOK             = 0
-	ExitCodeRejected       = 2
-	ExitCodeAnalysisFailed = 3
+	ExitCodeOK              = 0
+	ExitCodeRejected        = 2
+	ExitCodeAnalysisFailed  = 3
 	ExitCodeExecutionFailed = 4
 )
 

@@ -63,8 +63,8 @@ func newAuditCmd() *cobra.Command {
 			}
 
 			var (
-				rejected   int
-				exitCode   = sec.ExitCodeOK
+				rejected int
+				exitCode = sec.ExitCodeOK
 			)
 			for _, f := range files {
 				// #nosec G304 -- auditing a user-specified file is the feature;
