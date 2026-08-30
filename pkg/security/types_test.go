@@ -90,8 +90,6 @@ func TestHasBlockers(t *testing.T) {
 }
 
 // ─── Error types ──────────────────────────────────────────────────────────────
-
-func TestPipelineError(t *testing.T) {
 	err := NewPipelineError("sast", "boom", nil)
 	if got := err.Error(); got != "[sast] boom" {
 		t.Errorf("Error() = %q, want %q", got, "[sast] boom")
