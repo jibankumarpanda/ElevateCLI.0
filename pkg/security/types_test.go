@@ -89,8 +89,31 @@ func TestHasBlockers(t *testing.T) {
 	}
 }
 
+// ─── Exit codes ───────────────────────────────────────────────────────────────
+
+func TestExitCodeFor(t *testing.T) {
+	cases := []struct {
+		verdict Verdict
+		want    int
+	}{
+		{VerdictApproved, ExitCodeOK},
+		{VerdictWarning, ExitCodeOK},
+		{VerdictRejected, ExitCodeRejected},
+		{VerdictBlocked, ExitCodeRejected},
+		{VerdictAnalysisIncomplete, ExitCodeAnalysisFailed},
+		{VerdictExecutionFailed, ExitCodeExecutionFailed},
+		{Verdict("UNKNOWN"), ExitCodeOK}, // conservative: unknown verdicts do not gate
+	}
+	for _, c := range cases {
+		if got := ExitCodeFor(c.verdict); got != c.want {
+			t.Errorf("ExitCodeFor(%q) = %d, want %d", c.verdict, got, c.want)
+		}
+	}
+}
+
 // ─── Error types ──────────────────────────────────────────────────────────────
-	err := NewPipelineError("sast", "boom", nil)
+
+func TestPipelineError(t *testing.T) {	err := NewPipelineError("sast", "boom", nil)
 	if got := err.Error(); got != "[sast] boom" {
 		t.Errorf("Error() = %q, want %q", got, "[sast] boom")
 	}
