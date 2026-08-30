@@ -132,7 +132,95 @@ func (e *PolicyEngineImpl) checkGo(code string) ([]sec.PolicyViolation, error) {
 		return true
 	})
 
+	if e.cfg.Rules.MaxCyclomaticComplexity > 0 {
+		violations = append(violations, e.checkCyclomaticComplexity(fset, f)...)
+	}
+
 	return violations, nil
+}
+
+// checkCyclomaticComplexity inspects every top-level function declaration and
+// flags any whose cyclomatic complexity exceeds the configured threshold. It
+// uses the conventional definition of cyclomatic complexity: a function's base
+// complexity is 1, and every decision point adds 1. Decision points counted are
+// branches (if/else-if), loops (for), iterators (range), switch/select cases,
+// guard clauses (go/defer) and short-circuit boolean operators (&&, ||). Inline
+// function literals and methods are counted per declaration.
+//
+// max_cyclomatic_complexity <= 0 disables the rule (callers gate on this), so
+// an unset threshold never produces spurious violations.
+func (e *PolicyEngineImpl) checkCyclomaticComplexity(fset *token.FileSet, f *ast.File) []sec.PolicyViolation {
+	if e.cfg.Rules.MaxCyclomaticComplexity <= 0 {
+		return nil
+	}
+
+	limit := e.cfg.Rules.MaxCyclomaticComplexity
+	var violations []sec.PolicyViolation
+
+	for _, decl := range f.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok {
+			continue
+		}
+		// Skip method declarations on test files and generated helper stubs?
+		// Keep it simple and count every FuncDecl, matching gocyclo.
+		complexity := cyclomaticComplexity(fn.Body)
+		if complexity > limit {
+			violations = append(violations, sec.PolicyViolation{
+				Rule: "HIGH_COMPLEXITY",
+				Description: fmt.Sprintf(
+					"Function '%s' has cyclomatic complexity %d, exceeding the configured limit of %d.",
+					fn.Name.Name, complexity, limit),
+				File:  "generated_code.go",
+				Line:  fset.Position(fn.Pos()).Line,
+				Value: fmt.Sprintf("%d", complexity),
+			})
+		}
+	}
+	return violations
+}
+
+// cyclomaticComplexity returns the cyclomatic complexity of a function body,
+// or 0 when the body is nil. Each decision point increments the count.
+func cyclomaticComplexity(body *ast.BlockStmt) int {
+	if body == nil {
+		return 0
+	}
+	v := &complexityVisitor{}
+	ast.Inspect(body, func(n ast.Node) bool {
+		switch node := n.(type) {
+		case *ast.IfStmt:
+			v.n++
+		case *ast.ForStmt:
+			v.n++
+		case *ast.RangeStmt:
+			v.n++
+		case *ast.CaseClause:
+			if len(node.List) > 0 { // default: adds no complexity
+				v.n++
+			}
+		case *ast.CommClause:
+			if node.Comm != nil { // default case: no complexity
+				v.n++
+			}
+		case *ast.BinaryExpr:
+			if node.Op == token.LAND || node.Op == token.LOR {
+				v.n++
+			}
+		case *ast.GoStmt:
+			v.n++
+		case *ast.DeferStmt:
+			v.n++
+		}
+		return true
+	})
+	// Base complexity of 1 plus one per decision point.
+	return 1 + v.n
+}
+
+// complexityVisitor accumulates the number of decision points in a function body.
+type complexityVisitor struct {
+	n int
 }
 
 // ─── Generic policy checks (all languages) ────────────────────────────────────
