@@ -1,11 +1,9 @@
-# ElevateCLI
-
-![ElevateCLI](banner.jpg)
-
+# ElevatedCLI
+![ElevateCLI Banner](banner.png) 
 > Generate, inspect, and verify AI-generated code from the terminal.
 
 [![Go Version](https://img.shields.io/badge/go-1.25-blue.svg)](https://go.dev/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: Apache License Version 2.0, January 2004 ](http://www.apache.org/licenses/)](LICENSE)
 
 `elevated-cli` is a Go-based command-line tool that generates code through supported LLM providers and runs the result through a multi-stage verification pipeline:
 
@@ -21,7 +19,7 @@ Inspect and verify it before use.
 Use hardened isolation before executing untrusted code.
 ```
 
-> 🚧 **Project status: Beta / development.** ElevateCLI provides automated verification and controlled local execution. It is not production-ready for hostile or untrusted code until hardened isolation and enforced CPU, memory, filesystem, process, and network controls are implemented and independently tested.
+> 🚧 **Project status: Beta / development.** ElevatedCLI provides automated verification and controlled local execution. It is not production-ready for hostile or untrusted code until hardened isolation and enforced CPU, memory, filesystem, process, and network controls are implemented and independently tested.
 
 > ⚠️ **Security notice:** AI-generated code is untrusted input. Static analysis, dependency scans, policies, scores, and controlled execution reduce risk; they do not prove that code is secure. A positive score or `APPROVED` verdict does not mean code is safe to execute on the host or deploy to production. Do not execute untrusted code without a verified hardened isolation runtime such as Firecracker or gVisor.
 
@@ -149,7 +147,7 @@ AI coding tools can accelerate development, but generated code may contain:
 - Unrestricted network access
 - Logic flaws that automated scanners cannot detect
 
-ElevateCLI places verification between AI generation and any decision to use or execute generated code:
+ElevatedCLI places verification between AI generation and any decision to use or execute generated code:
 
 ```text
 Developer Prompt
@@ -193,7 +191,7 @@ Stages 1–3 may run in parallel. Execution is performed only after verification
 ### Build from Source
 
 ```bash
-git clone https://github.com/jibankumarpanda/ElevateCLI.0.git
+git clone https://github.com/jibankumarpanda/ElevateCLI.git
 cd ElevateCLI
 
 go build -o bin/elevated-cli ./cmd/elevated-cli
@@ -245,7 +243,7 @@ Firecracker and gVisor are planned hardened execution backends.
 - gVisor provides an additional isolation layer for containerized workloads.
 - The current `os/exec` process runner is **not** a substitute for either.
 
-If a future configuration requests Firecracker or gVisor but the runtime is unavailable, ElevateCLI should fail closed rather than silently falling back to host process execution.
+If a future configuration requests Firecracker or gVisor but the runtime is unavailable, ElevatedCLI should fail closed rather than silently falling back to host process execution.
 
 ---
 
@@ -253,7 +251,7 @@ If a future configuration requests Firecracker or gVisor but the runtime is unav
 
 ### 1. Create a Configuration File
 
-ElevateCLI searches for `.elevated-cli.yaml` in the current directory or home directory unless `--config` is supplied.
+ElevatedCLI searches for `.elevated-cli.yaml` in the current directory or home directory unless `--config` is supplied.
 
 ```bash
 touch .elevated-cli.yaml
@@ -367,7 +365,7 @@ elevated-cli history --id <scan-id>
 | `generate` | Generate code from an AI provider and verify it through the pipeline |
 | `audit` | Verify an existing file or directory |
 | `history` | Browse previous audit reports stored in SQLite |
-| `config` | Display or modify ElevateCLI configuration |
+| `config` | Display or modify ElevatedCLI configuration |
 
 ### Global Flags
 
@@ -439,7 +437,7 @@ Every target is assessed through four stages.
 
 ### Stage 0 — Code Extraction and Validation
 
-Before security analysis, ElevateCLI should:
+Before security analysis, ElevatedCLI should:
 
 - Extract code from model responses or source files
 - Detect the selected or inferred language
@@ -578,7 +576,7 @@ For production execution of untrusted code, use a verified isolation system such
 
 ### Firecracker Fallback Behavior
 
-`firecracker` is accepted as a configuration value, but microVM execution is not yet operational. When `sandbox.mode: firecracker` is selected, ElevateCLI **fails closed**: the requested microVM boundary is never silently replaced with host `os/exec` execution. The pipeline returns an `ANALYSIS_INCOMPLETE` verdict with a clear explanation that the Firecracker runtime is unavailable, instead of claiming a controlled run happened inside a microVM.
+`firecracker` is accepted as a configuration value, but microVM execution is not yet operational. When `sandbox.mode: firecracker` is selected, ElevatedCLI **fails closed**: the requested microVM boundary is never silently replaced with host `os/exec` execution. The pipeline returns an `ANALYSIS_INCOMPLETE` verdict with a clear explanation that the Firecracker runtime is unavailable, instead of claiming a controlled run happened inside a microVM.
 
 > The `docker` sandbox mode is likewise not implemented and fails closed with `ANALYSIS_INCOMPLETE` rather than silently running on the host.
 
@@ -600,7 +598,7 @@ When `--no-sandbox` is used, or when execution is not requested:
 
 ## Security Scoring
 
-ElevateCLI calculates a deterministic score from 0–100 using weighted stage scores:
+ElevatedCLI calculates a deterministic score from 0–100 using weighted stage scores:
 
 ```text
 final_score =
@@ -683,7 +681,7 @@ A policy violation configured with `action: block`, a critical SAST finding, a c
 
 ## Output Formats
 
-ElevateCLI supports terminal-friendly and machine-readable reports.
+ElevatedCLI supports terminal-friendly and machine-readable reports.
 
 ```bash
 elevated-cli audit --dir ./src --output json
@@ -840,7 +838,7 @@ A policy should support an action such as `warn` or `block`. Any rule configured
 
 ## Audit Data and Privacy
 
-ElevateCLI stores audit records in SQLite. Audit data can be sensitive because it may reveal source paths, project structure, model usage, security findings, and developer activity.
+ElevatedCLI stores audit records in SQLite. Audit data can be sensitive because it may reveal source paths, project structure, model usage, security findings, and developer activity.
 
 ### Current Behavior (Honest Disclosure)
 
@@ -974,7 +972,7 @@ highest (most severe) exit code across all files is returned.
 
 ## Threat Model
 
-ElevateCLI treats the following as untrusted:
+ElevatedCLI treats the following as untrusted:
 
 - AI-generated source code
 - AI model output
@@ -1000,7 +998,7 @@ The project aims to reduce risk from:
 
 ### Out of Scope
 
-ElevateCLI cannot guarantee that code is secure or protect against every threat, including:
+ElevatedCLI cannot guarantee that code is secure or protect against every threat, including:
 
 - Unknown vulnerabilities
 - Scanner blind spots and false negatives
@@ -1021,7 +1019,7 @@ ElevateCLI cannot guarantee that code is secure or protect against every threat,
 - **Defense in depth:** Use parsing, SAST, dependency auditing, policies, scoring, runtime controls, and manual review together.
 - **Least privilege:** Future hardened runtimes should grant only minimal filesystem, network, process, and environment access.
 - **Deny by default:** Network access and dangerous actions should require explicit policy approval.
-- **No unverified host execution:** By default, ElevateCLI does not execute generated code unless execution is explicitly requested. The current process runner executes code on the host and is only suitable for controlled local development. Production execution of untrusted code requires a verified hardened isolation runtime such as Firecracker or gVisor.
+- **No unverified host execution:** By default, ElevatedCLI does not execute generated code unless execution is explicitly requested. The current process runner executes code on the host and is only suitable for controlled local development. Production execution of untrusted code requires a verified hardened isolation runtime such as Firecracker or gVisor.
 - **Explainable decisions:** Findings, policy violations, scores, and verdicts should state why a decision was made.
 - **Auditability:** Preserve enough metadata to understand prior decisions without retaining secrets unnecessarily.
 - **Secret protection:** Redact secrets where possible and avoid raw-secret retention by default.
@@ -1171,7 +1169,7 @@ Before a release should be considered secure enough for broader internal testing
 - [ ] Plugin architecture
 - [ ] Enterprise identity, access, and centralized audit export
 
-> Until these P0 controls are implemented and independently tested, ElevateCLI is appropriate only for controlled local development and security-review workflows—not hostile-code execution or production security enforcement.
+> Until these P0 controls are implemented and independently tested, ElevatedCLI is appropriate only for controlled local development and security-review workflows—not hostile-code execution or production security enforcement.
 
 ---
 
@@ -1231,7 +1229,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Disclaimer
 
-ElevateCLI is a security-assistance tool, not a security guarantee.
+ElevatedCLI is a security-assistance tool, not a security guarantee.
 
 Automated analysis can miss vulnerabilities, produce false positives, depend on incomplete vulnerability databases, and be limited by the capabilities of the installed security tools and execution backend.
 
