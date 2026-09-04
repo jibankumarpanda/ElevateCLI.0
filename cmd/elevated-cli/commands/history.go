@@ -128,7 +128,7 @@ func newConfigCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "config",
-		Short: "View or modify ElevatedCLI configuration",
+		Short: "View or modify ElevateCLI configuration",
 		Example: `  # Show current resolved config
   elevated-cli config --show
 
@@ -157,7 +157,7 @@ func printConfig() {
 	gray := color.New(color.FgHiBlack)
 	cyan := color.New(color.FgCyan)
 
-	_, _ = bold.Println("\n  ElevatedCLI — Current Configuration")
+	_, _ = bold.Println("\n  ElevateCLI — Current Configuration")
 
 	section := func(name string) {
 		_, _ = gray.Printf("  ── %s\n", name)

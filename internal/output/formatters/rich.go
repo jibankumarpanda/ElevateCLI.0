@@ -1,4 +1,4 @@
-// Package formatters provides output formatters for ElevatedCLI scan reports.
+// Package formatters provides output formatters for ElevateCLI scan reports.
 // rich.go produces a colorful, human-readable terminal display.
 package formatters
 
@@ -62,7 +62,7 @@ func PrintRich(w io.Writer, r *sec.Report, showCode bool) error {
 
 func printHeader(w io.Writer, r *sec.Report) {
 	fmt.Fprintf(w, "\n")
-	_, _ = bold.Fprintf(w, "  ElevatedCLI Security Report\n")
+	_, _ = bold.Fprintf(w, "  ElevateCLI Security Report\n")
 	_, _ = gray.Fprintf(w, "  Scan ID : %s\n", r.ID)
 	_, _ = gray.Fprintf(w, "  Provider: %s / %s\n", r.AIProvider, r.AIModel)
 	_, _ = gray.Fprintf(w, "  Language: %s\n", r.Language)

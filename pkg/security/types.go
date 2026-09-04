@@ -1,4 +1,4 @@
-// Package security provides shared types used across the entire ElevatedCLI
+// Package security provides shared types used across the entire ElevateCLI
 // security pipeline. Every other package imports from here — define once, use everywhere.
 package security
 

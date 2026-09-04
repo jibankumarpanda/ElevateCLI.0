@@ -1,4 +1,4 @@
-// Package commands contains all Cobra CLI command definitions for ElevatedCLI.
+// Package commands contains all Cobra CLI command definitions for ElevateCLI.
 package commands
 
 import (
@@ -21,7 +21,7 @@ var (
 var RootCmd = &cobra.Command{
 	Use:   "elevated-cli",
 	Short: "Secure AI Developer CLI — verified, scored AI code generation",
-	Long: `ElevatedCLI generates code using AI and runs it through a 4-stage
+	Long: `ElevateCLI generates code using AI and runs it through a 4-stage
 security pipeline (SAST → dependency audit → policy enforcement → sandbox)
 before showing you the result.
 

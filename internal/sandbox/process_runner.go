@@ -1,4 +1,4 @@
-// Package sandbox provides code execution environments for ElevatedCLI.
+// Package sandbox provides code execution environments for ElevateCLI.
 // This file implements the cross-platform process runner — the safe fallback
 // used on macOS and Windows (and as a fallback on Linux when Firecracker
 // is unavailable). It uses restricted os/exec with:

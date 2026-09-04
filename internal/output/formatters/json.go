@@ -27,7 +27,7 @@ func PrintJSON(w io.Writer, r *sec.Report) error {
 func PrintPlain(w io.Writer, r *sec.Report, showCode bool) error {
 	line := strings.Repeat("-", 72)
 	fmt.Fprintln(w, line)
-	fmt.Fprintf(w, "ElevatedCLI Security Report\n")
+	fmt.Fprintf(w, "ElevateCLI Security Report\n")
 	fmt.Fprintf(w, "Scan ID  : %s\n", r.ID)
 	fmt.Fprintf(w, "Provider : %s / %s\n", r.AIProvider, r.AIModel)
 	fmt.Fprintf(w, "Language : %s\n", r.Language)
@@ -200,7 +200,7 @@ func PrintSARIF(w io.Writer, r *sec.Report) error {
 		Runs: []sarifRun{{
 			Tool: sarifTool{
 				Driver: sarifDriver{
-					Name:           "ElevatedCLI",
+					Name:           "ElevateCLI",
 					Version:        "1.0.0",
 					InformationURI: "https://github.com/yourusername/elevated-cli",
 					Rules:          rules,

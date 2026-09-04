@@ -1,4 +1,4 @@
-// Package output handles all result formatting and display for ElevatedCLI.
+// Package output handles all result formatting and display for ElevateCLI.
 // reporter.go dispatches a completed Report to the correct formatter
 // based on the configured output format.
 package output
