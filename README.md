@@ -3,7 +3,7 @@
 > Generate, inspect, and verify AI-generated code from the terminal.
 
 [![Go Version](https://img.shields.io/badge/go-1.25-blue.svg)](https://go.dev/)
-![License: Apache License Version 2.0, January 2004 http://www.apache.org/licenses/](LICENSE)
+
 
 `elevated-cli` is a Go-based command-line tool that generates code through supported LLM providers and runs the result through a multi-stage verification pipeline:
 
