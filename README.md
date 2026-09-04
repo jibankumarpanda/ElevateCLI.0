@@ -1,5 +1,7 @@
 # ElevateCLI
 
+![ElevateCLI](banner.jpg)
+
 > Generate, inspect, and verify AI-generated code from the terminal.
 
 [![Go Version](https://img.shields.io/badge/go-1.25-blue.svg)](https://go.dev/)
@@ -191,7 +193,7 @@ Stages 1–3 may run in parallel. Execution is performed only after verification
 ### Build from Source
 
 ```bash
-git clone https://github.com/jibankumarpanda/ElevateCLI.git
+git clone https://github.com/jibankumarpanda/ElevateCLI.0.git
 cd ElevateCLI
 
 go build -o bin/elevated-cli ./cmd/elevated-cli
