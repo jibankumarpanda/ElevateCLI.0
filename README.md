@@ -276,7 +276,7 @@ sandbox:
 output:
   format: rich # rich | json | sarif | plain
   show_code: false
-  audit_db: secure-ai.db # SQLite audit-database path
+  audit_db: elevated-cli.db # SQLite audit-database path
 
 audit:
   store_prompts: true # Retain raw prompts in history (disable for strict retention)
@@ -314,7 +314,7 @@ policy:
 Set API credentials through environment variables:
 
 ```bash
-export SECURE_AI_AI_API_KEY="your-api-key"
+export ELEVATED_CLI_AI_API_KEY="your-api-key"
 ```
 
 > Never commit API keys, credentials, tokens, `.env` files, or personal configuration files to source control.
@@ -754,15 +754,15 @@ Priority order:
 CLI flags > Environment variables > Configuration file > Defaults
 ```
 
-Environment variables use the `SECURE_AI_` prefix and replace dots with underscores:
+Environment variables use the `ELEVATED_CLI_` prefix and replace dots with underscores:
 
 ```bash
-export SECURE_AI_AI_PROVIDER="openai"
-export SECURE_AI_AI_MODEL="gpt-4o"
-export SECURE_AI_AI_API_KEY="..."
-export SECURE_AI_SANDBOX_MODE="process"
-export SECURE_AI_SCORING_PASS_THRESHOLD="80"
-export SECURE_AI_ANALYSIS_OSV_SCANNER="true"
+export ELEVATED_CLI_AI_PROVIDER="openai"
+export ELEVATED_CLI_AI_MODEL="gpt-4o"
+export ELEVATED_CLI_AI_API_KEY="..."
+export ELEVATED_CLI_SANDBOX_MODE="process"
+export ELEVATED_CLI_SCORING_PASS_THRESHOLD="80"
+export ELEVATED_CLI_ANALYSIS_OSV_SCANNER="true"
 ```
 
 ### Configuration Schema
@@ -780,7 +780,7 @@ export SECURE_AI_ANALYSIS_OSV_SCANNER="true"
 | `sandbox.block_network` | `true` | Enforced on Linux via user+network namespaces; fails closed when isolation is unavailable |
 | `output.format` | `rich` | `rich`, `json`, `sarif`, or `plain` |
 | `output.show_code` | `false` | Include source snippets in report output |
-| `output.audit_db` | `secure-ai.db` | SQLite audit-database path |
+| `output.audit_db` | `elevated-cli.db` | SQLite audit-database path |
 | `audit.store_prompts` | `true` | Retain raw prompts in scan history |
 | `audit.store_generated_code` | `true` | Retain generated source in scan history |
 | `audit.redact_secrets` | `true` | Redact detected credentials before writing history |
@@ -798,7 +798,7 @@ export SECURE_AI_ANALYSIS_OSV_SCANNER="true"
 | `analysis.custom_ast_rules` | `true` | Enable custom AST checks |
 | `policy.file` | `.elevated-cli.yaml` | Path to the policy file (currently self-referencing; inline rules in `policy.rules` take precedence) |
 
-> `database.path` also exists as a config key with the same default (`secure-ai.db`), but `output.audit_db` is the key actively used for opening the SQLite database. If both are present, `output.audit_db` takes precedence for audit operations.
+> `database.path` also exists as a config key with the same default (`elevated-cli.db`), but `output.audit_db` is the key actively used for opening the SQLite database. If both are present, `output.audit_db` takes precedence for audit operations.
 
 ---
 
