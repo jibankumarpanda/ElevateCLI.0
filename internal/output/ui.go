@@ -55,8 +55,8 @@ func (m model) View() string {
 		verdictStyle = styleRejected
 	}
 
-	b.WriteString(fmt.Sprintf("Verdict: %s\n", verdictStyle.Render(string(m.report.Verdict))))
-	b.WriteString(fmt.Sprintf("Security Score: %d/100\n\n", m.report.FinalScore))
+	fmt.Fprintf(&b, "Verdict: %s\n", verdictStyle.Render(string(m.report.Verdict)))
+	fmt.Fprintf(&b, "Security Score: %d/100\n\n", m.report.FinalScore)
 
 	b.WriteString("Findings:\n")
 	if len(m.report.Findings) == 0 && len(m.report.Vulns) == 0 && len(m.report.Violations) == 0 {

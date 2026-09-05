@@ -147,7 +147,7 @@ func TestAnthropicGenerate(t *testing.T) {
 			t.Errorf("x-api-key = %q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"content":[{"type":"text","text":"claude answer"}]}`))
+		_, _ = w.Write([]byte(`{"content":[{"type":"text","text":"claude answer"}]}`))
 	}))
 	defer srv.Close()
 
@@ -164,7 +164,7 @@ func TestAnthropicGenerate(t *testing.T) {
 func TestAnthropicGenerateHTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("bad request"))
+		_, _ = w.Write([]byte("bad request"))
 	}))
 	defer srv.Close()
 
@@ -177,7 +177,7 @@ func TestAnthropicGenerateHTTPError(t *testing.T) {
 func TestOllamaGenerate(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"response":"ollama answer"}`))
+		_, _ = w.Write([]byte(`{"response":"ollama answer"}`))
 	}))
 	defer srv.Close()
 

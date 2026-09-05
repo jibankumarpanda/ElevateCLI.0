@@ -238,9 +238,10 @@ func max(a, b int) int {
 // SummaryLine returns a single formatted line for history listings.
 func SummaryLine(id string, ts time.Time, prompt string, score int, verdict sec.Verdict, lang string) string {
 	icon := "✗"
-	if verdict == sec.VerdictApproved {
+	switch verdict {
+	case sec.VerdictApproved:
 		icon = "✓"
-	} else if verdict == sec.VerdictWarning {
+	case sec.VerdictWarning:
 		icon = "⚠"
 	}
 	p := prompt

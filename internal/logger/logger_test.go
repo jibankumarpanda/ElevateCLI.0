@@ -14,14 +14,14 @@ func TestBuildConsoleAndJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build console: %v", err)
 	}
-	l.Sync()
+	_ = l.Sync()
 
 	cfg.Format = "json"
 	l2, err := build(cfg)
 	if err != nil {
 		t.Fatalf("build json: %v", err)
 	}
-	l2.Sync()
+	_ = l2.Sync()
 }
 
 func TestBuildInvalidLevelFallsBackToInfo(t *testing.T) {
@@ -32,7 +32,7 @@ func TestBuildInvalidLevelFallsBackToInfo(t *testing.T) {
 	if l.Core().Enabled(zap.InfoLevel) != true {
 		t.Error("info level should be enabled after fallback")
 	}
-	l.Sync()
+	_ = l.Sync()
 }
 
 func TestBuildWithFile(t *testing.T) {
@@ -43,7 +43,7 @@ func TestBuildWithFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
-	defer l.Sync()
+	defer func() { _ = l.Sync() }()
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("log file was not created: %v", err)
 	}
