@@ -129,14 +129,14 @@ func Load(cfgFile string) (*Config, error) {
 	v.SetDefault("ai.model", "gpt-4o")
 	v.SetDefault("ai.endpoint", "http://localhost:11434")
 	v.SetDefault("ai.timeout_sec", 120)
-	v.SetDefault("database.path", "secure-ai.db")
+	v.SetDefault("database.path", "elevated-cli.db")
 	v.SetDefault("sandbox.mode", "process")
 	v.SetDefault("sandbox.timeout_sec", 10)
 	v.SetDefault("sandbox.max_memory_mb", 256)
 	v.SetDefault("sandbox.block_network", true)
 	v.SetDefault("output.format", "rich")
 	v.SetDefault("output.show_code", false)
-	v.SetDefault("output.audit_db", "secure-ai.db")
+	v.SetDefault("output.audit_db", "elevated-cli.db")
 	v.SetDefault("audit.store_prompts", true)
 	v.SetDefault("audit.store_generated_code", true)
 	v.SetDefault("audit.redact_secrets", true)
@@ -177,8 +177,8 @@ func Load(cfgFile string) (*Config, error) {
 
 	// Environment variables
 	v.AutomaticEnv()
-	v.SetEnvPrefix("SECURE_AI")
-	// Map nested keys (ai.provider -> SECURE_AI_AI_PROVIDER) to env vars.
+	v.SetEnvPrefix("ELEVATED_CLI")
+	// Map nested keys (ai.provider -> ELEVATED_CLI_AI_PROVIDER) to env vars.
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	if err := v.ReadInConfig(); err != nil {
@@ -194,7 +194,7 @@ func Load(cfgFile string) (*Config, error) {
 	}
 
 	// Ensure database path is absolute or relative to a sensible place
-	if cfg.Database.Path == "secure-ai.db" {
+	if cfg.Database.Path == "elevated-cli.db" {
 		cfg.Database.Path = filepath.Join(".", cfg.Database.Path)
 	}
 

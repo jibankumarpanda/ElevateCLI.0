@@ -1,0 +1,29 @@
+version: "2"
+
+run:
+  timeout: 5m
+  concurrency: 4
+
+linters:
+  default: standard
+  enable:
+    - copyloopvar
+    - govet
+  disable: []
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    paths:
+      - third_party$

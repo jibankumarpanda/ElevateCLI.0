@@ -26,17 +26,20 @@ test-coverage:
 	go test ./... -coverprofile=coverage.out
 	go tool cover -html=coverage.out
 
-# Lint with golangci-lint
+# Lint with golangci-lint (pinned; installed on demand so make lint works out of the box)
+GOLANGCI_VERSION=v2.13.2
+GOSEC_VERSION=v2.22.1
+
 lint:
-	golangci-lint run ./...
+	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION) run ./...
 
 # Run gosec security scan on your own codebase
 gosec:
-	gosec ./...
+	go run github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION) ./...
 
 # Check for vulnerabilities in dependencies
 vulncheck:
-	govulncheck ./...
+	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
 # Format code
 fmt:

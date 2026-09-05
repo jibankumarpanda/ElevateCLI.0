@@ -1,1 +1,33 @@
- # Security scanning pipeline
+# SAST of the tool's own source code with gosec.
+name: Security scan
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gosec:
+    name: Gosec
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run Gosec security scanner
+        uses: securego/gosec@master
+        with:
+          args: ./...

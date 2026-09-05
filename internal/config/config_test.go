@@ -78,9 +78,9 @@ scoring:
 }
 
 func TestLoadEnvOverride(t *testing.T) {
-	t.Setenv("SECURE_AI_AI_PROVIDER", "ollama")
-	t.Setenv("SECURE_AI_AI_MODEL", "llama3")
-	t.Setenv("SECURE_AI_SCORING_PASS_THRESHOLD", "55")
+	t.Setenv("ELEVATED_CLI_AI_PROVIDER", "ollama")
+	t.Setenv("ELEVATED_CLI_AI_MODEL", "llama3")
+	t.Setenv("ELEVATED_CLI_SCORING_PASS_THRESHOLD", "55")
 
 	cfg, err := Load(writeTempConfig(t, "# defaults + env"))
 	if err != nil {
