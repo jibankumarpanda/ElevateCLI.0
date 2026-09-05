@@ -1,4 +1,4 @@
- # Main CI/CD pipeline
+# Main CI pipeline: build, vet, test (with race detector), coverage.
 name: CI
 
 on:
@@ -7,21 +7,38 @@ on:
   pull_request:
     branches: [ main ]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   test:
-    name: Test
+    name: Build, vet and test
     runs-on: ubuntu-latest
     steps:
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.22'
-
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Install Dependencies
-        run: go mod tidy
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
 
-      - name: Run Tests
-        run: go test -v ./...
+      - name: Check go.mod is tidy
+        run: go mod tidy -diff
+
+      - name: Build binary
+        run: go build -o /tmp/elevated-cli ./cmd/elevated-cli
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test (race detector)
+        run: go test ./... -race -count=1
+
+      - name: Test coverage
+        run: go test ./... -coverprofile=/tmp/coverage.out
