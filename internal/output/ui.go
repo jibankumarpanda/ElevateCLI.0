@@ -64,7 +64,7 @@ func (m model) View() string {
 	}
 
 	for _, f := range m.report.Findings {
-		b.WriteString(fmt.Sprintf("  [SAST] [%s] %s\n", f.Severity, f.Title))
+		fmt.Fprintf(&b, "  [SAST] [%s] %s\n", f.Severity, f.Title)
 	}
 	for _, v := range m.report.Vulns {
 		b.WriteString(fmt.Sprintf("  [VULN] [%s] %s\n", v.Severity, v.Package))
