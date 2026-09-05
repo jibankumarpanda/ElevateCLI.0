@@ -67,10 +67,10 @@ func (m model) View() string {
 		fmt.Fprintf(&b, "  [SAST] [%s] %s\n", f.Severity, f.Title)
 	}
 	for _, v := range m.report.Vulns {
-		b.WriteString(fmt.Sprintf("  [VULN] [%s] %s\n", v.Severity, v.Package))
+		fmt.Fprintf(&b, "  [VULN] [%s] %s\n", v.Severity, v.Package)
 	}
 	for _, p := range m.report.Violations {
-		b.WriteString(fmt.Sprintf("  [POLICY] %s — %s\n", p.Rule, p.Description))
+		fmt.Fprintf(&b, "  [POLICY] %s — %s\n", p.Rule, p.Description)
 	}
 
 	b.WriteString("\nPress 'q' to exit.")
