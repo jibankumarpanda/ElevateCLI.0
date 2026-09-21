@@ -30,6 +30,18 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Sandbox.TimeoutSec != 10 {
 		t.Errorf("sandbox.timeout_sec = %d, want 10", cfg.Sandbox.TimeoutSec)
 	}
+	if cfg.Sandbox.MaxMemoryMB != 256 {
+		t.Errorf("sandbox.max_memory_mb = %d, want 256", cfg.Sandbox.MaxMemoryMB)
+	}
+	if !cfg.Sandbox.BlockNetwork {
+		t.Errorf("sandbox.block_network should default to true")
+	}
+	if cfg.Sandbox.MaxCPUSeconds != 0 || cfg.Sandbox.MaxNProc != 0 {
+		t.Errorf("cpu/nproc caps should default to 0 (no cap), got cpu=%d nproc=%d", cfg.Sandbox.MaxCPUSeconds, cfg.Sandbox.MaxNProc)
+	}
+	if cfg.Sandbox.MaxOutputKB != 1024 || cfg.Sandbox.MaxFSWriteMB != 10 {
+		t.Errorf("output/fs caps should default to enforced caps, got out=%dKB fs=%dMB", cfg.Sandbox.MaxOutputKB, cfg.Sandbox.MaxFSWriteMB)
+	}
 	if cfg.Output.Format != "rich" {
 		t.Errorf("output.format = %q, want rich", cfg.Output.Format)
 	}
@@ -55,6 +67,10 @@ func TestLoadFromFile(t *testing.T) {
 sandbox:
   mode: firecracker
   timeout_sec: 30
+  max_cpu_seconds: 5
+  max_nproc: 32
+  max_output_kb: 512
+  max_fs_write_mb: 2
 scoring:
   pass_threshold: 85
   fail_closed: false
@@ -68,6 +84,12 @@ scoring:
 	}
 	if cfg.Sandbox.Mode != "firecracker" || cfg.Sandbox.TimeoutSec != 30 {
 		t.Errorf("sandbox = %+v", cfg.Sandbox)
+	}
+	if cfg.Sandbox.MaxCPUSeconds != 5 || cfg.Sandbox.MaxNProc != 32 {
+		t.Errorf("custom cpu/nproc caps lost: %+v", cfg.Sandbox)
+	}
+	if cfg.Sandbox.MaxOutputKB != 512 || cfg.Sandbox.MaxFSWriteMB != 2 {
+		t.Errorf("custom output/fs caps lost: %+v", cfg.Sandbox)
 	}
 	if cfg.Scoring.PassThreshold != 85 {
 		t.Errorf("pass_threshold = %d, want 85", cfg.Scoring.PassThreshold)

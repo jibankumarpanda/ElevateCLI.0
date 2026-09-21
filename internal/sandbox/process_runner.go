@@ -10,6 +10,7 @@
 package sandbox
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -61,14 +62,33 @@ type ProcessRunner struct {
 	timeoutSec  int
 	maxMemoryMB int
 	blockNet    bool
+
+	// Extended hard limits (P0). Zero values disable the corresponding cap
+	// (except maxOutputKB, where zero means no capture cap at all).
+	maxCPUSeconds  int // RLIMIT_CPU (prlimit --cpu)
+	maxNProc       int // RLIMIT_NPROC (prlimit --nproc)
+	maxOutputKB    int // combined stdout+stderr capture cap
+	maxFSWriteMB   int // RLIMIT_FSIZE (prlimit --fsize)
 }
 
 // NewProcessRunner creates a ProcessRunner with the given resource limits.
+// It does not apply the extended CPU/process/output/filesystem caps; use
+// NewProcessRunnerWithLimits for the full fail-closed control set.
 func NewProcessRunner(timeoutSec, maxMemoryMB int, blockNet bool) *ProcessRunner {
+	return NewProcessRunnerWithLimits(timeoutSec, maxMemoryMB, blockNet, ResourceLimits{})
+}
+
+// NewProcessRunnerWithLimits creates a ProcessRunner with the full set of hard
+// limits. The extended fields of limits are honoured directly (0 = no cap).
+func NewProcessRunnerWithLimits(timeoutSec, maxMemoryMB int, blockNet bool, limits ResourceLimits) *ProcessRunner {
 	return &ProcessRunner{
-		timeoutSec:  timeoutSec,
-		maxMemoryMB: maxMemoryMB,
-		blockNet:    blockNet,
+		timeoutSec:   timeoutSec,
+		maxMemoryMB:  maxMemoryMB,
+		blockNet:     blockNet,
+		maxCPUSeconds: limits.MaxCPUSeconds,
+		maxNProc:      limits.MaxNProc,
+		maxOutputKB:   limits.MaxOutputKB,
+		maxFSWriteMB:  limits.MaxFSWriteMB,
 	}
 }
 
@@ -119,14 +139,16 @@ func (r *ProcessRunner) Run(ctx context.Context, code, language string) (sec.San
 		}, err
 	}
 
-	// Apply the configured memory limit. Fails closed on platforms or runtimes
-	// that cannot enforce it, so a configured limit is never silently ignored.
-	cmd, err = r.withMemoryLimit(timeoutCtx, cmd)
+	// Apply the configured hard resource limits (memory, CPU time, process
+	// count, per-file write size) in a single prlimit wrapper. Fails closed:
+	// on platforms or runtimes that cannot enforce a configured limit, the
+	// generated code must not run with a silently-ignored cap.
+	cmd, err = r.withResourceLimits(timeoutCtx, cmd)
 	if err != nil {
 		return sec.SandboxResult{
 			Executed:   false,
 			Skipped:    false,
-			SkipReason: fmt.Sprintf("memory limit unavailable: %v", err),
+			SkipReason: fmt.Sprintf("resource limits unavailable: %v", err),
 			Mode:       "process",
 		}, err
 	}
@@ -134,15 +156,26 @@ func (r *ProcessRunner) Run(ctx context.Context, code, language string) (sec.San
 	// Apply process-level restrictions (process group, scrubbed environment).
 	applyRestrictions(cmd)
 
-	// Execute
-	output, runErr := cmd.CombinedOutput()
+	// Execute. Output capture is memory-bounded: combined stdout+stderr is
+	// capped at maxOutputKB bytes so a chatty or hostile child cannot exhaust
+	// the host via unbounded writes to our buffer. Bytes beyond the cap are
+	// discarded, never buffered.
+	capture := newCappedOutput(r.maxOutputKB * 1024)
+	cmd.Stdout = capture
+	cmd.Stderr = capture
+	runErr := cmd.Run()
 	duration := time.Since(start)
 
 	result := sec.SandboxResult{
 		Executed: true,
 		Mode:     "process",
 		Duration: duration,
-		Stdout:   string(output),
+		Stdout:   capture.String(),
+	}
+
+	if capture.exceeded() {
+		result.RuntimeErrors = append(result.RuntimeErrors,
+			fmt.Sprintf("output exceeded the %d KB capture cap; trailing output discarded", r.maxOutputKB))
 	}
 
 	if runErr != nil {
@@ -254,29 +287,51 @@ func applyRestrictions(cmd *exec.Cmd) {
 	}
 }
 
-// withMemoryLimit wraps cmd with prlimit --as so the sandboxed process cannot
-// exceed the configured address-space limit. It fails closed: if the platform
-// or runtime cannot enforce the limit, an error is returned and generated code
-// is not executed with an ignored memory cap. maxMemoryMB <= 0 means "no limit".
-func (r *ProcessRunner) withMemoryLimit(ctx context.Context, cmd *exec.Cmd) (*exec.Cmd, error) {
-	if r.maxMemoryMB <= 0 {
+// withResourceLimits wraps cmd with a single prlimit invocation applying every
+// configured hard limit: address space (--as), CPU time (--cpu), process count
+// (--nproc), and per-file write size (--fsize). It fails closed: if any limit
+// is configured but the platform or runtime cannot enforce it, it returns an
+// error and generated code is not executed with a silently-ignored cap.
+// Values <= 0 disable the corresponding limit (except maxOutputKB, which is
+// enforced separately in Run via capped output capture, not prlimit).
+func (r *ProcessRunner) withResourceLimits(ctx context.Context, cmd *exec.Cmd) (*exec.Cmd, error) {
+	var flags []string
+	prefix := func(name string, value uint64) {
+		flags = append(flags, name+"="+fmt.Sprintf("%d", value))
+	}
+
+	if r.maxMemoryMB > 0 {
+		prefix("--as", uint64(r.maxMemoryMB)*1024*1024)
+	}
+	if r.maxCPUSeconds > 0 {
+		prefix("--cpu", uint64(r.maxCPUSeconds))
+	}
+	if r.maxNProc > 0 {
+		prefix("--nproc", uint64(r.maxNProc))
+	}
+	if r.maxFSWriteMB > 0 {
+		prefix("--fsize", uint64(r.maxFSWriteMB)*1024*1024)
+	}
+
+	if len(flags) == 0 {
 		return cmd, nil
 	}
 	if runtime.GOOS != "linux" {
-		return nil, fmt.Errorf("memory limits cannot be enforced on %s: sandbox.max_memory_mb is a hard cap, not a hint", runtime.GOOS)
+		return nil, fmt.Errorf("hard resource limits (%s) cannot be enforced on %s: they are hard caps, not hints; use prlimit-capable Linux or a hardened runtime (Firecracker/gVisor)", strings.Join(flags, " "), runtime.GOOS)
 	}
 	if _, err := exec.LookPath("prlimit"); err != nil {
-		return nil, fmt.Errorf("max_memory_mb requires the 'prlimit' utility (util-linux): %w", err)
+		return nil, fmt.Errorf("hard resource limits require the 'prlimit' utility (util-linux): %w", err)
 	}
 
-	bytes := uint64(r.maxMemoryMB) * 1024 * 1024
-	argv := make([]string, 0, len(cmd.Args)+4)
-	argv = append(argv, "prlimit", "--as="+fmt.Sprintf("%d", bytes), "--")
+	argv := make([]string, 0, len(cmd.Args)+len(flags)+2)
+	argv = append(argv, "prlimit")
+	argv = append(argv, flags...)
+	argv = append(argv, "--")
 	argv = append(argv, cmd.Args...)
 
 	// #nosec G204 -- argv is assembled from fixed per-language commands plus
-	// the pre-verified prlimit wrapper; generated code is written to a file,
-	// never interpolated into command arguments.
+	// numeric, config-derived prlimit flags; generated code is written to a
+	// file, never interpolated into command arguments.
 	wrapped := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	wrapped.Dir = cmd.Dir
 	wrapped.Env = cmd.Env
@@ -327,4 +382,53 @@ func langToExt(lang string) string {
 	default:
 		return ".txt"
 	}
+}
+
+// cappedOutput buffers up to max bytes of combined child output, discarding
+// anything beyond the cap so memory use stays bounded. It always reports the
+// full write length so exec's copy loop keeps draining the child and never
+// deadlocks; exceeding the cap is surfaced via exceeded() and the caller adds
+// a runtime warning for the report. max <= 0 means "no cap" (unbounded).
+// It is safe for concurrent use by exec's stdout/stderr copy goroutines.
+type cappedOutput struct {
+	mu        sync.Mutex
+	buf       bytes.Buffer
+	max       int
+	overLimit bool
+}
+
+func newCappedOutput(max int) *cappedOutput {
+	return &cappedOutput{max: max}
+}
+
+func (c *cappedOutput) Write(p []byte) (int, error) {
+	if c.max <= 0 {
+		return c.buf.Write(p)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	room := c.max - c.buf.Len()
+	if room > 0 {
+		if len(p) <= room {
+			return c.buf.Write(p)
+		}
+		c.buf.Write(p[:room])
+		c.overLimit = true
+		return len(p), nil
+	}
+	c.overLimit = true
+	return len(p), nil
+}
+
+func (c *cappedOutput) String() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.buf.String()
+}
+
+func (c *cappedOutput) exceeded() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.overLimit
 }

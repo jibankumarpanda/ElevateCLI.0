@@ -42,9 +42,13 @@ func buildPipeline(cfg config.Config, runSandbox bool, srcDir string) (*security
 			// the pipeline marks the run ANALYSIS_INCOMPLETE instead of silently
 			// executing on the host with os/exec.
 			sandboxRunner = sandbox.NewFirecrackerRunner(sandbox.ResourceLimits{
-				MemoryMB: cfg.Sandbox.MaxMemoryMB,
-				Timeout:  time.Duration(cfg.Sandbox.TimeoutSec) * time.Second,
-				AllowNet: !cfg.Sandbox.BlockNetwork,
+				MemoryMB:      cfg.Sandbox.MaxMemoryMB,
+				Timeout:       time.Duration(cfg.Sandbox.TimeoutSec) * time.Second,
+				AllowNet:      !cfg.Sandbox.BlockNetwork,
+				MaxCPUSeconds: cfg.Sandbox.MaxCPUSeconds,
+				MaxNProc:      cfg.Sandbox.MaxNProc,
+				MaxOutputKB:   cfg.Sandbox.MaxOutputKB,
+				MaxFSWriteMB:  cfg.Sandbox.MaxFSWriteMB,
 			})
 		case "docker":
 			// Docker execution is documented as a config value but has no
@@ -54,10 +58,16 @@ func buildPipeline(cfg config.Config, runSandbox bool, srcDir string) (*security
 				reason: "sandbox.mode: docker is not implemented; no container runner is available",
 			}
 		default: // "process"
-			sandboxRunner = sandbox.NewProcessRunner(
+			sandboxRunner = sandbox.NewProcessRunnerWithLimits(
 				cfg.Sandbox.TimeoutSec,
 				cfg.Sandbox.MaxMemoryMB,
 				cfg.Sandbox.BlockNetwork,
+				sandbox.ResourceLimits{
+					MaxCPUSeconds: cfg.Sandbox.MaxCPUSeconds,
+					MaxNProc:      cfg.Sandbox.MaxNProc,
+					MaxOutputKB:   cfg.Sandbox.MaxOutputKB,
+					MaxFSWriteMB:  cfg.Sandbox.MaxFSWriteMB,
+				},
 			)
 		}
 	}

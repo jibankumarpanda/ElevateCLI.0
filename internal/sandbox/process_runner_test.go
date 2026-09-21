@@ -22,6 +22,15 @@ func TestDefaultLimits(t *testing.T) {
 	if lim.Timeout != 10*time.Second {
 		t.Errorf("Timeout = %v, want 10s", lim.Timeout)
 	}
+	if lim.MaxCPUSeconds != 0 || lim.MaxNProc != 0 {
+		t.Errorf("cpu/nproc caps should default to 0 (no cap), got cpu=%d nproc=%d", lim.MaxCPUSeconds, lim.MaxNProc)
+	}
+	if lim.MaxOutputKB != 1024 || lim.MaxFSWriteMB != 10 {
+		t.Errorf("output/fs caps should default to enforced values, got out=%dKB fs=%dMB", lim.MaxOutputKB, lim.MaxFSWriteMB)
+	}
+	if got := NewProcessRunnerWithLimits(5, 64, true, lim); got.maxOutputKB != 1024 || got.maxFSWriteMB != 10 {
+		t.Errorf("extended constructor did not carry output/fs caps: %+v", got)
+	}
 }
 
 func TestLangToExt(t *testing.T) {
@@ -390,5 +399,160 @@ func TestRunEnforcesMemoryLimit(t *testing.T) {
 	}
 	if strings.Contains(res.Stdout, "UNEXPECTED-SUCCESS") {
 		t.Errorf("generated code allocated past its memory cap: %q", res.Stdout)
+	}
+}
+
+// TestResourceLimitsFailsClosedOffLinux verifies a configured hard resource
+// cap is never silently ignored on platforms that cannot enforce it.
+func TestResourceLimitsFailsClosedOffLinux(t *testing.T) {
+	if runtime.GOOS == "linux" {
+		t.Skip("Linux enforces these limits; this test covers non-Linux fail-closed")
+	}
+	if _, err := exec.LookPath("prlimit"); err == nil {
+		t.Log("prlimit exists but the test runs non-Linux; enforcement path is still fail-closed")
+	}
+	r := NewProcessRunnerWithLimits(5, 64, false, ResourceLimits{MaxCPUSeconds: 2})
+	res, err := r.Run(context.Background(), "print('must not run')", "python")
+	if err == nil {
+		t.Fatal("expected an error when a hard limit cannot be enforced on this platform")
+	}
+	if res.Executed {
+		t.Error("code must not run when a configured hard limit is unenforceable")
+	}
+	if res.Skipped {
+		t.Error("unenforceable cap is a failure, not a deliberate skip")
+	}
+}
+
+// TestRunEnforcesCPULimit verifies a spinning (CPU-bound) sandboxed process is
+// stopped by the RLIMIT_CPU cap instead of burning host cores until the
+// wall-clock timeout fires.
+func TestRunEnforcesCPULimit(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not installed")
+	}
+	if _, err := exec.LookPath("prlimit"); err != nil {
+		t.Skip("prlimit not installed")
+	}
+	if runtime.GOOS != "linux" {
+		t.Skip("CPU limits are enforced on Linux only")
+	}
+
+	start := time.Now()
+	r := NewProcessRunnerWithLimits(30, 128, false, ResourceLimits{MaxCPUSeconds: 1})
+	res, err := r.Run(context.Background(),
+		"import sys\nprint('SPINNING')\nsys.stdout.flush()\nwhile True: pass",
+		"python")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !res.Executed {
+		t.Fatalf("run should have executed, got %+v", res)
+	}
+	if res.Success {
+		t.Errorf("CPU-bound process reported success: %+v", res)
+	}
+	if time.Since(start) > 20*time.Second {
+		t.Errorf("CPU cap did not terminate the spinner promptly (took %v)", time.Since(start))
+	}
+}
+
+// TestRunCapsOutput verifies combined stdout+stderr capture is memory-bounded:
+// a chatty child is truncated at the cap, the run still completes with its own
+// exit status, and the truncation is surfaced as a runtime warning.
+func TestRunCapsOutput(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not installed")
+	}
+	const capKB = 4
+	r := NewProcessRunnerWithLimits(10, 256, false, ResourceLimits{MaxOutputKB: capKB})
+	res, err := r.Run(context.Background(), "import sys\nsys.stdout.write('x' * 1024 * 16)\nprint('DONE')\n", "python")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !res.Executed || !res.Success {
+		t.Fatalf("chatty-but-clean program must still succeed, got %+v", res)
+	}
+	if len(res.Stdout) > capKB*1024 {
+		t.Errorf("captured %d bytes, exceeding the %d KB cap", len(res.Stdout), capKB)
+	}
+	hasWarning := false
+	for _, m := range res.RuntimeErrors {
+		if strings.Contains(m, "output exceeded") {
+			hasWarning = true
+		}
+	}
+	if !hasWarning {
+		t.Errorf("expected an output-cap warning, got %+v", res.RuntimeErrors)
+	}
+}
+
+// TestRunEnforcesFSWriteLimit verifies a sandboxed process that tries to grow a
+// file beyond the RLIMIT_FSIZE cap is stopped (SIGXFSZ), not allowed to write
+// unbounded data to the filesystem.
+func TestRunEnforcesFSWriteLimit(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not installed")
+	}
+	if _, err := exec.LookPath("prlimit"); err != nil {
+		t.Skip("prlimit not installed")
+	}
+	if runtime.GOOS != "linux" {
+		t.Skip("filesystem write limits are enforced on Linux only")
+	}
+
+	r := NewProcessRunnerWithLimits(15, 128, false, ResourceLimits{MaxFSWriteMB: 1})
+	res, err := r.Run(context.Background(),
+		"import sys\nprint('WRITING')\nsys.stdout.flush()\nwith open('/tmp/big.bin','wb') as f:\n    f.write(b'x' * (1 << 24))\nprint('UNEXPECTED-WRITE-OK')\n",
+		"python")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !res.Executed {
+		t.Fatalf("run should have executed, got %+v", res)
+	}
+	if res.Success {
+		t.Errorf("oversized write reported success: %+v", res)
+	}
+	if strings.Contains(res.Stdout, "UNEXPECTED-WRITE-OK") {
+		t.Errorf("process wrote past its filesystem cap: %q", res.Stdout)
+	}
+}
+
+// TestRunEnforcesProcessCountLimit verifies a sandboxed process that forks
+// unboundedly is constrained by the RLIMIT_NPROC cap instead of exhausting the
+// host's process table.
+//
+// Caveat: RLIMIT_NPROC is per real UID and counts every process of that UID,
+// so this test uses a deliberately generous cap and only requires the fork
+// storm to fail, never to break the wider test harness.
+func TestRunEnforcesProcessCountLimit(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not installed")
+	}
+	if _, err := exec.LookPath("prlimit"); err != nil {
+		t.Skip("prlimit not installed")
+	}
+	if runtime.GOOS != "linux" {
+		t.Skip("process-count limits are enforced on Linux only")
+	}
+
+	r := NewProcessRunnerWithLimits(15, 128, false, ResourceLimits{MaxNProc: 64})
+	res, err := r.Run(context.Background(),
+		"import os\nimport sys\nprint('FORKING')\nsys.stdout.flush()\nfor _ in range(200):\n    try:\n        os.fork()\n    except OSError:\n        sys.exit(42)\nprint('UNEXPECTED-FORK-OK')\n",
+		"python")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !res.Executed {
+		t.Fatalf("run should have executed, got %+v", res)
+	}
+	if res.Success {
+		t.Errorf("fork storm reported success: %+v", res)
+	}
+	// Exit code 42 means the fork cap (EAGAIN) fired before completion. Either
+	// that, or a non-zero kill from hitting some other limit, is a failure.
+	if strings.Contains(res.Stdout, "UNEXPECTED-FORK-OK") {
+		t.Errorf("fork storm ran to completion despite the process cap: %q", res.Stdout)
 	}
 }

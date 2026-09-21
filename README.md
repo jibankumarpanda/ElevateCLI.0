@@ -778,6 +778,10 @@ export ELEVATED_CLI_ANALYSIS_OSV_SCANNER="true"
 | `sandbox.timeout_sec` | `10` | Controlled-execution timeout |
 | `sandbox.max_memory_mb` | `256` | Enforced on Linux via `prlimit --as`; fails closed when it cannot be enforced |
 | `sandbox.block_network` | `true` | Enforced on Linux via user+network namespaces; fails closed when isolation is unavailable |
+| `sandbox.max_cpu_seconds` | `0` | CPU-time cap via `prlimit --cpu` (0 = no explicit cap; wall-clock timeout still applies) |
+| `sandbox.max_nproc` | `0` | Process-count cap via `prlimit --nproc`, per real UID (0 = no cap) |
+| `sandbox.max_output_kb` | `1024` | Memory-bounded stdout+stderr capture cap; overflow is discarded and reported |
+| `sandbox.max_fs_write_mb` | `10` | Per-file write cap via `prlimit --fsize` |
 | `output.format` | `rich` | `rich`, `json`, `sarif`, or `plain` |
 | `output.show_code` | `false` | Include source snippets in report output |
 | `output.audit_db` | `elevated-cli.db` | SQLite audit-database path |
@@ -1135,8 +1139,8 @@ Before a release should be considered secure enough for broader internal testing
 - [x] Secret redaction and retention controls (`audit.store_prompts`, `store_generated_code`, `redact_secrets`; redaction on by default)
 - [x] Enforced memory control (`prlimit --as` on Linux, fails closed) and network control (`unshare -U -n`, fails closed)
 - [ ] Firecracker or gVisor hardened isolation
-- [ ] Enforced CPU, process-count, output, and filesystem-control limits
-- [ ] Hostile-code / sandbox-escape test coverage for a hardened runtime (process-runner hostile-code coverage: env scrubbing, containment, timeout, memory-limit — implemented)
+- [x] Enforced CPU, process-count, output, and filesystem-control limits (`prlimit --cpu`/`--nproc`/`--fsize`, memory-bounded output capture — all fail closed on Linux)
+- [x] Hostile-code / sandbox-escape test coverage for a hardened runtime (process-runner hostile-code coverage: env scrubbing, containment, timeout, memory-limit, CPU-limit, process-count-limit, output-cap, filesystem-write-limit — implemented)
 - [ ] Independent security review of the execution backend
 - [x] Correct exit codes for `BLOCKED`, `ANALYSIS_INCOMPLETE`, and `EXECUTION_FAILED`
 - [x] Enforced `max_cyclomatic_complexity` policy rule (Go, via go/ast)

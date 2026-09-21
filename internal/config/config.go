@@ -36,11 +36,30 @@ type DatabaseConfig struct {
 }
 
 // SandboxConfig controls how generated code is executed in isolation.
+// The resource limits below are enforced by the process runner (prlimit on
+// Linux) and fail closed: a configured limit that cannot be enforced blocks
+// execution rather than being silently ignored (see process_runner.go).
 type SandboxConfig struct {
 	Mode         string `mapstructure:"mode"` // process | firecracker | docker | skip
 	TimeoutSec   int    `mapstructure:"timeout_sec"`
 	MaxMemoryMB  int    `mapstructure:"max_memory_mb"`
 	BlockNetwork bool   `mapstructure:"block_network"`
+
+	// MaxCPUSeconds caps CPU time consumed by the sandboxed process via
+	// RLIMIT_CPU (prlimit --cpu). 0 = no explicit cap (the wall-clock timeout
+	// still applies).
+	MaxCPUSeconds int `mapstructure:"max_cpu_seconds"`
+	// MaxNProc caps the process count via RLIMIT_NPROC (prlimit --nproc).
+	// Caveat: RLIMIT_NPROC is per real UID system-wide, so the cap also applies
+	// to other processes of the executing user. 0 = no cap.
+	MaxNProc int `mapstructure:"max_nproc"`
+	// MaxOutputKB caps the combined stdout+stderr captured from the sandboxed
+	// process. Output beyond the cap is discarded (memory-bounded capture) and
+	// surfaced as a runtime warning. 0 = no cap.
+	MaxOutputKB int `mapstructure:"max_output_kb"`
+	// MaxFSWriteMB caps the size a single file may reach via RLIMIT_FSIZE
+	// (prlimit --fsize). 0 = no cap.
+	MaxFSWriteMB int `mapstructure:"max_fs_write_mb"`
 }
 
 // OutputConfig controls how scan results are displayed and stored.
@@ -134,6 +153,14 @@ func Load(cfgFile string) (*Config, error) {
 	v.SetDefault("sandbox.timeout_sec", 10)
 	v.SetDefault("sandbox.max_memory_mb", 256)
 	v.SetDefault("sandbox.block_network", true)
+	// Resource limits. max_cpu_seconds and max_nproc default to 0 (no explicit
+	// cap): the wall-clock timeout still bounds CPU time, and RLIMIT_NPROC is a
+	// per-UID limit so a low default could break the user's own processes.
+	// max_output_kb and max_fs_write_mb default to enforced caps.
+	v.SetDefault("sandbox.max_cpu_seconds", 0)
+	v.SetDefault("sandbox.max_nproc", 0)
+	v.SetDefault("sandbox.max_output_kb", 1024)
+	v.SetDefault("sandbox.max_fs_write_mb", 10)
 	v.SetDefault("output.format", "rich")
 	v.SetDefault("output.show_code", false)
 	v.SetDefault("output.audit_db", "elevated-cli.db")
