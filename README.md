@@ -188,6 +188,10 @@ Stages 1–3 may run in parallel. Execution is performed only after verification
 
 ## Installation
 
+### Download a Release
+
+Tagged releases publish prebuilt binaries for Linux, macOS, and Windows (see [Platform Support](#platform-support)). Download the archive for your OS from the GitHub Releases page, unpack it, and place the `elevated-cli` (or `elevated-cli.exe`) binary on your `PATH`. On macOS/Windows, review the non-Linux sandbox-execution caveats in [Platform Support](#platform-support).
+
 ### Build from Source
 
 ```bash
@@ -917,13 +921,32 @@ Audit history supports troubleshooting, review, comparisons, and operational vis
 
 ## Platform Support
 
-| Platform | CLI | Static analysis | Controlled process runner | Firecracker microVM | gVisor |
-|---|---:|---:|---:|---:|---:|
-| Linux | Supported | Supported when tools are installed | Development only | Planned / Linux-specific | Planned |
-| macOS | Supported | Supported when tools are installed | Development only | Not supported | Not supported |
-| Windows | Supported where Go and external tools are available | Supported when tools are installed | Development only | Not supported | Not supported |
+Prebuilt release binaries are published for all three platforms on `v*` tags via GoReleaser (`.goreleaser.yml`). The current code compiles and runs on Linux, macOS, and Windows.
 
-> Exact behavior depends on installed scanners, language runtimes, permissions, and operating-system process-management behavior. The current process runner is not a hardened isolation boundary on any platform.
+| OS | Architectures | Release binary | Verified build |
+|---|---|---:|---|
+| Linux | amd64, arm64 | `elevated-cli` | `GOOS=linux go build ./...` |
+| macOS | amd64, arm64 | `elevated-cli` | `GOOS=darwin go build ./...` |
+| Windows | amd64 | `elevated-cli.exe` | `GOOS=windows go build ./...` |
+
+| Platform | CLI & analysis | Controlled process runner | Hard limits (`prlimit`) | Network isolation (`unshare`) | Firecracker / gVisor |
+|---|---:|---:|---:|---:|---:|
+| Linux | Supported | Available | Enforced, fails closed | Enforced, fails closed | Planned |
+| macOS | Supported | Available | Fails closed (not enforceable) | Fails closed (not enforceable) | Not supported |
+| Windows | Supported | Available | Fails closed (not enforceable) | Fails closed (not enforceable) | Not supported |
+
+> Fail-closed enforcement is platform-dependent. The hard limits (`max_memory_mb` via `prlimit --as`, `max_cpu_seconds` via `--cpu`, `max_nproc` via `--nproc`, `max_fs_write_mb` via `--fsize`) and network isolation (`block_network` via `unshare -U -n`) are enforced only on Linux. On macOS and Windows a configured-but-unenforceable control never runs silently with a missing cap: execution **fails closed** and the run is reported `ANALYSIS_INCOMPLETE`. Because the default config sets `max_memory_mb: 256` and `block_network: true`, sandbox execution on macOS/Windows requires explicitly disabling the unenforceable controls:
+
+```yaml
+sandbox:
+  block_network: false
+  max_memory_mb: 0
+  max_cpu_seconds: 0
+  max_nproc: 0
+  max_fs_write_mb: 0
+```
+
+> The in-process output cap (`sandbox.max_output_kb`) is enforced on every platform. Static analysis, policy enforcement, scoring, and reporting run identically everywhere; only the sandbox execution controls are OS-dependent. The process runner is not a hardened isolation boundary on any platform.
 
 ---
 
