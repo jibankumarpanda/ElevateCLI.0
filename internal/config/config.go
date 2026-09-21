@@ -40,7 +40,7 @@ type DatabaseConfig struct {
 // Linux) and fail closed: a configured limit that cannot be enforced blocks
 // execution rather than being silently ignored (see process_runner.go).
 type SandboxConfig struct {
-	Mode         string `mapstructure:"mode"` // process | firecracker | docker | skip
+	Mode         string `mapstructure:"mode"` // process | gvisor | firecracker | docker | skip
 	TimeoutSec   int    `mapstructure:"timeout_sec"`
 	MaxMemoryMB  int    `mapstructure:"max_memory_mb"`
 	BlockNetwork bool   `mapstructure:"block_network"`

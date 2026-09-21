@@ -50,6 +50,20 @@ func buildPipeline(cfg config.Config, runSandbox bool, srcDir string) (*security
 				MaxOutputKB:   cfg.Sandbox.MaxOutputKB,
 				MaxFSWriteMB:  cfg.Sandbox.MaxFSWriteMB,
 			})
+		case "gvisor":
+			// gVisor executes the generated code inside a user-space kernel
+			// (syscall interception), rootless, with the host filesystem presented
+			// read-only behind a memory overlay and a fresh network namespace.
+			// Fails closed if the boundary cannot be provided; never degrades to
+			// the host os/exec process runner.
+			sandboxRunner = sandbox.NewGVisorRunner(
+				cfg.Sandbox.TimeoutSec,
+				cfg.Sandbox.MaxMemoryMB,
+				cfg.Sandbox.BlockNetwork,
+				sandbox.ResourceLimits{
+					MaxOutputKB: cfg.Sandbox.MaxOutputKB,
+				},
+			)
 		case "docker":
 			// Docker execution is documented as a config value but has no
 			// implemented runner. Fail closed (ANALYSIS_INCOMPLETE) rather than

@@ -241,13 +241,25 @@ go install github.com/google/osv-scanner/cmd/osv-scanner@latest
 
 ### Hardened Sandbox Runtimes
 
-Firecracker and gVisor are planned hardened execution backends.
+`gVisor` is the implemented hardened runtime (Linux): `sandbox.mode: gvisor` runs generated code inside a gVisor sandbox driven by `runsc do`.
 
-- Firecracker provides Linux microVM-based isolation.
-- gVisor provides an additional isolation layer for containerized workloads.
-- The current `os/exec` process runner is **not** a substitute for either.
+- **gVisor** provides a user-space kernel — every syscall from the sandboxed process is intercepted by the sentry, so there is no kernel escape and no host write, with network isolation and a read-only host view behind an in-memory overlay. Runs rootless (unprivileged user namespaces); see [Platform Support](#platform-support) for the confidentiality caveat and the `ELEVATED_CLI_RUNSC_ROOTFS` tightening option.
+- **Firecracker** (Linux microVM-based isolation) is still planned (`sandbox.mode: firecracker` fails closed today).
+- The plain `os/exec` process runner (`sandbox.mode: process`) is **not** a hardened isolation boundary.
 
-If a future configuration requests Firecracker or gVisor but the runtime is unavailable, ElevateCLI should fail closed rather than silently falling back to host process execution.
+To install `runsc` on Linux:
+
+```bash
+# latest release (see gVisor's install docs for apt alternatives)
+ARCH=$(uname -m)
+wget -q https://storage.googleapis.com/gvisor/releases/release/latest/${ARCH}/gvisor.tar.bz2
+tar xjf gvisor.tar.bz2 -C /usr/local/bin  # installs runsc + containerd shim + gvisor-bin/
+rm gvisor.tar.bz2
+# or place runsc anywhere and point ElevateCLI at it:
+#   export ELEVATED_CLI_RUNSC_BINARY=/opt/runsc/runsc
+```
+
+`runsc` must remain next to its `gvisor-bin/` sidecar directory. There is no fallback: if `sandbox.mode: gvisor` is selected and the boundary cannot be provided, ElevateCLI fails closed and reports `ANALYSIS_INCOMPLETE` rather than running on the host.
 
 ---
 
@@ -272,7 +284,7 @@ ai:
   timeout_sec: 120
 
 sandbox:
-  mode: process # process | firecracker | docker | skip
+  mode: process # process | gvisor | firecracker | docker | skip
   timeout_sec: 10
   max_memory_mb: 256 # Enforced on Linux via prlimit; fails closed when it cannot be enforced
   block_network: true # Runtime-enforced on Linux via user+network namespaces; fails closed when unavailable
@@ -778,7 +790,7 @@ export ELEVATED_CLI_ANALYSIS_OSV_SCANNER="true"
 | `ai.api_key` | `""` | API credential; prefer environment variables |
 | `ai.endpoint` | `http://localhost:11434` | Local provider endpoint |
 | `ai.timeout_sec` | `120` | LLM request timeout |
-| `sandbox.mode` | `process` | `process`, `firecracker`, `docker`, or `skip` |
+| `sandbox.mode` | `process` | `process`, `gvisor`, `firecracker`, `docker`, or `skip` |
 | `sandbox.timeout_sec` | `10` | Controlled-execution timeout |
 | `sandbox.max_memory_mb` | `256` | Enforced on Linux via `prlimit --as`; fails closed when it cannot be enforced |
 | `sandbox.block_network` | `true` | Enforced on Linux via user+network namespaces; fails closed when isolation is unavailable |
@@ -929,11 +941,11 @@ Prebuilt release binaries are published for all three platforms on `v*` tags via
 | macOS | amd64, arm64 | `elevated-cli` | `GOOS=darwin go build ./...` |
 | Windows | amd64 | `elevated-cli.exe` | `GOOS=windows go build ./...` |
 
-| Platform | CLI & analysis | Controlled process runner | Hard limits (`prlimit`) | Network isolation (`unshare`) | Firecracker / gVisor |
-|---|---:|---:|---:|---:|---:|
-| Linux | Supported | Available | Enforced, fails closed | Enforced, fails closed | Planned |
-| macOS | Supported | Available | Fails closed (not enforceable) | Fails closed (not enforceable) | Not supported |
-| Windows | Supported | Available | Fails closed (not enforceable) | Fails closed (not enforceable) | Not supported |
+| Platform | CLI & analysis | Process runner | gVisor (`runsc`) | Hard limits (`prlimit`) | Network isolation (`unshare`) | Firecracker |
+|---|---:|---:|---:|---:|---:|---:|
+| Linux | Supported | Available | Enforced, fails closed | Enforced, fails closed | Enforced, fails closed | Planned |
+| macOS | Supported | Available | Not supported | Fails closed (not enforceable) | Fails closed (not enforceable) | Not supported |
+| Windows | Supported | Available | Not supported | Fails closed (not enforceable) | Fails closed (not enforceable) | Not supported |
 
 > Fail-closed enforcement is platform-dependent. The hard limits (`max_memory_mb` via `prlimit --as`, `max_cpu_seconds` via `--cpu`, `max_nproc` via `--nproc`, `max_fs_write_mb` via `--fsize`) and network isolation (`block_network` via `unshare -U -n`) are enforced only on Linux. On macOS and Windows a configured-but-unenforceable control never runs silently with a missing cap: execution **fails closed** and the run is reported `ANALYSIS_INCOMPLETE`. Because the default config sets `max_memory_mb: 256` and `block_network: true`, sandbox execution on macOS/Windows requires explicitly disabling the unenforceable controls:
 
@@ -946,7 +958,16 @@ sandbox:
   max_fs_write_mb: 0
 ```
 
-> The in-process output cap (`sandbox.max_output_kb`) is enforced on every platform. Static analysis, policy enforcement, scoring, and reporting run identically everywhere; only the sandbox execution controls are OS-dependent. The process runner is not a hardened isolation boundary on any platform.
+> The in-process output cap (`sandbox.max_output_kb`) is enforced on every platform. `gVisor` isolation is Linux-only and fails closed elsewhere.
+
+> **gVisor boundary — reading, writing, network.** gVisor via `runsc do` presents the host filesystem **read-only** to the sandbox behind an in-memory overlay: the sandboxed process can never modify the host, has no network (loopback included) when `block_network: true`, and cannot escape the sentry. The one confidentiality caveat is that with the default root view the process **can read** host files. To give the sandbox a tight data boundary instead, provide a self-contained rootfs directory (containing the language runtime and its libraries, e.g. a Debian-style root under a directory):
+
+```bash
+export ELEVATED_CLI_RUNSC_ROOTFS=/srv/elevated-rootfs   # only this tree is visible
+export ELEVATED_CLI_RUNSC_BINARY=/usr/local/bin/runsc   # optional override
+```
+
+> Static analysis, policy enforcement, scoring, and reporting run identically everywhere; only the sandbox execution controls are OS-dependent. The plain process runner is not a hardened isolation boundary on any platform.
 
 ---
 
@@ -1142,8 +1163,9 @@ Before a release should be considered secure enough for broader internal testing
 - SQLite database error handling
 - CLI exit-code behavior
 - End-to-end pipeline behavior
-- Firecracker/gVisor backend failure handling when implemented
-- Resource-limit and network-denial enforcement when implemented
+- gVisor backend failure handling (boundary unavailable, fails closed); Firecracker failure handling when implemented
+- Resource-limit and network-denial enforcement (incl. gVisor memory-cap and network-isolation paths)
+- Hostile-code execution in the gVisor sandbox (write containment, no host modification)
 
 ---
 
@@ -1161,9 +1183,9 @@ Before a release should be considered secure enough for broader internal testing
 - [x] No silent fallback from requested microVM isolation to host `os/exec` (fail-closed now enforced)
 - [x] Secret redaction and retention controls (`audit.store_prompts`, `store_generated_code`, `redact_secrets`; redaction on by default)
 - [x] Enforced memory control (`prlimit --as` on Linux, fails closed) and network control (`unshare -U -n`, fails closed)
-- [ ] Firecracker or gVisor hardened isolation
+- [x] Firecracker or gVisor hardened isolation (gVisor implemented; Firecracker relies on the above fail-closed stub until P2)
 - [x] Enforced CPU, process-count, output, and filesystem-control limits (`prlimit --cpu`/`--nproc`/`--fsize`, memory-bounded output capture — all fail closed on Linux)
-- [x] Hostile-code / sandbox-escape test coverage for a hardened runtime (process-runner hostile-code coverage: env scrubbing, containment, timeout, memory-limit, CPU-limit, process-count-limit, output-cap, filesystem-write-limit — implemented)
+- [x] Hostile-code / sandbox-escape test coverage for a hardened runtime (process-runner hostile-code coverage: env scrubbing, containment, timeout, memory-limit, CPU-limit, process-count-limit, output-cap, filesystem-write-limit; gVisor coverage: guest isolation, network block, write containment, timeout, memory-cap fail-closed, boundary-unavailable fail-closed — implemented)
 - [ ] Independent security review of the execution backend
 - [x] Correct exit codes for `BLOCKED`, `ANALYSIS_INCOMPLETE`, and `EXECUTION_FAILED`
 - [x] Enforced `max_cyclomatic_complexity` policy rule (Go, via go/ast)
@@ -1184,7 +1206,7 @@ Before a release should be considered secure enough for broader internal testing
 ### P2 — Production Hardening
 
 - [ ] Firecracker microVM orchestration
-- [ ] gVisor runtime support
+- [x] gVisor runtime support
 - [ ] Hardened Docker/container profile, if adopted
 - [ ] SBOM generation
 - [ ] Signed binaries
