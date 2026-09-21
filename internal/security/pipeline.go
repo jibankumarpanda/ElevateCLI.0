@@ -179,10 +179,12 @@ func (p *Pipeline) Run(ctx context.Context, prompt, code, language, aiProvider, 
 			// was never verified — fail closed.
 			analysisComplete = false
 		}
-		sandboxResult = sec.SandboxResult{
-			Executed:   false,
-			Skipped:    !sandboxRequired,
-			SkipReason: fmt.Sprintf("sandbox execution error: %v", err),
+		// Preserve the runner's detailed result (mode, fail-closed reason) so
+		// the report says what was attempted, never that host execution ran.
+		sandboxResult.Executed = false
+		sandboxResult.Skipped = sandboxResult.Skipped && !sandboxRequired
+		if sandboxResult.SkipReason == "" {
+			sandboxResult.SkipReason = fmt.Sprintf("sandbox execution error: %v", err)
 		}
 	}
 	report.Sandbox = sandboxResult
