@@ -71,7 +71,7 @@ func New(cfg config.Config, static StaticAnalyzer, deps DependencyAuditor,
 // deliberate decision, not an analysis failure.
 func (p *Pipeline) sandboxRequired() bool {
 	switch p.cfg.Sandbox.Mode {
-	case "process", "firecracker", "docker":
+	case "process", "gvisor", "firecracker", "docker":
 		return true
 	default:
 		return false
