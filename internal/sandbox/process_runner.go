@@ -64,10 +64,10 @@ type ProcessRunner struct {
 
 	// Extended hard limits (P0). Zero values disable the corresponding cap
 	// (except maxOutputKB, where zero means no capture cap at all).
-	maxCPUSeconds  int // RLIMIT_CPU (prlimit --cpu)
-	maxNProc       int // RLIMIT_NPROC (prlimit --nproc)
-	maxOutputKB    int // combined stdout+stderr capture cap
-	maxFSWriteMB   int // RLIMIT_FSIZE (prlimit --fsize)
+	maxCPUSeconds int // RLIMIT_CPU (prlimit --cpu)
+	maxNProc      int // RLIMIT_NPROC (prlimit --nproc)
+	maxOutputKB   int // combined stdout+stderr capture cap
+	maxFSWriteMB  int // RLIMIT_FSIZE (prlimit --fsize)
 }
 
 // NewProcessRunner creates a ProcessRunner with the given resource limits.
@@ -81,9 +81,9 @@ func NewProcessRunner(timeoutSec, maxMemoryMB int, blockNet bool) *ProcessRunner
 // limits. The extended fields of limits are honoured directly (0 = no cap).
 func NewProcessRunnerWithLimits(timeoutSec, maxMemoryMB int, blockNet bool, limits ResourceLimits) *ProcessRunner {
 	return &ProcessRunner{
-		timeoutSec:   timeoutSec,
-		maxMemoryMB:  maxMemoryMB,
-		blockNet:     blockNet,
+		timeoutSec:    timeoutSec,
+		maxMemoryMB:   maxMemoryMB,
+		blockNet:      blockNet,
 		maxCPUSeconds: limits.MaxCPUSeconds,
 		maxNProc:      limits.MaxNProc,
 		maxOutputKB:   limits.MaxOutputKB,

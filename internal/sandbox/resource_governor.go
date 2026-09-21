@@ -27,10 +27,10 @@ type ResourceLimits struct {
 // filesystem caps.
 func DefaultLimits() ResourceLimits {
 	return ResourceLimits{
-		MemoryMB:     256,
-		CPUPerc:      50,
-		Timeout:      10 * time.Second,
-		AllowNet:     false,
+		MemoryMB:      256,
+		CPUPerc:       50,
+		Timeout:       10 * time.Second,
+		AllowNet:      false,
 		MaxCPUSeconds: 0,
 		MaxNProc:      0,
 		MaxOutputKB:   1024,
