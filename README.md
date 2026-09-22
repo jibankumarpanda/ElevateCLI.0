@@ -432,6 +432,9 @@ elevated-cli generate --prompt "..." --lang go
 | `-m, --model` | Override the configured LLM model |
 | `--sandbox` | Requested mode: `firecracker`, `process`, or `docker` |
 | `--run` | Request controlled execution after verification |
+| `--fix` | **Experimental.** Apply rule-driven mechanical repairs (blocked-import removal, error-handling rewrap, secret redaction, complexity reduction) and re-verify until green or `BLOCKED` |
+| `--fix-semantic` | **Experimental.** Let the LLM propose a patch for semantic findings; the full pipeline re-verifies that patch, and the diff requires human review before merge |
+| `--review` | **Experimental.** Print the before/after diff of the latest fix-loop round for human review |
 | `--dry-run` | Print the generated prompt without calling an LLM |
 | `-o, --output` | `rich`, `json`, `sarif`, or `plain` |
 
@@ -684,6 +687,23 @@ The score is advisory. The verdict is authoritative.
 | 7 | No blocking conditions but score requires review | `WARNING` or `REJECTED` |
 
 `APPROVED` means enabled verification controls completed and found no blocking condition. It does **not** mean that the code is proven secure, safe to execute on the host, or approved for production deployment.
+
+### Post-Fix Scoring Contract
+
+When the fix loop applies a repair, the **score reflects the final, re-verified code** — not the original snapshot. The report records both so the audit trail stays honest:
+
+| Field | Meaning |
+|---|---|
+| `pre_fix_score` | The score of the code as originally generated, before any repair |
+| `post_fix_score` | The current score of the re-verified code after the fix loop |
+| `fix_rounds` | How many repair → re-verify iterations were required |
+
+**Rules:**
+
+- Mechanical fixes that restore a cleaned condition **restore the deducted stage points**: score is computed from the post-fix code, so a resolved SAST finding raises the score accordingly.
+- The **verdict is recomputed fail-closed after every round**. A passing post-fix score can never override a remaining blocking condition — `BLOCKED` still wins.
+- If fix verification cannot complete, `ANALYSIS_INCOMPLETE` applies and no `APPROVED` verdict is produced.
+- Fix applications that alter semantics set `pre_fix_score`/`post_fix_score` and **require human review of the diff** before the fix counts as merged (see [How It Fixes Code](#how-it-fixes-code)).
 
 ### Score Interpretation
 
@@ -1221,6 +1241,7 @@ Before a release should be considered secure enough for broader internal testing
 
 - [ ] Strong syntax validation for all supported languages
 - [ ] More robust multi-language analyzers
+- [ ] **Experimental, not yet shipped:** the fail-closed fix loop — rule-driven mechanical repairs plus LLM-proposed semantic patches, both re-verified and fail-closed, with `--fix`, `--fix-semantic`, and `--review` (flags documented in [generate](#generate) but gated behind `experimental.features` until released)
 - [ ] Explicit policy severity and action schema
 - [ ] Policy file versioning
 - [ ] Better remediation guidance
