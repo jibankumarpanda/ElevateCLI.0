@@ -1,6 +1,6 @@
 # ElevateCLI
 ![ElevateCLI Banner](banner.jpg) 
-> Generate, inspect, and verify AI-generated code from the terminal.
+> Generate, inspect, verify, and fix AI-generated code from the terminal.
 
 [![Go Version](https://img.shields.io/badge/go-1.25-blue.svg)](https://go.dev/)
 
@@ -15,8 +15,16 @@ It produces an explainable verdict, a deterministic security score from 0–100,
 
 ```text
 Generate code faster.
-Inspect and verify it before use.
+Inspect, verify, and fix it before use.
 Use hardened isolation before executing untrusted code.
+```
+
+> **Why ElevateCLI instead of an interactive coding agent?** An agent (opencode, Copilot, etc.) will rewrite your AI-generated code and hand the result back to you as a finished patch — with zero proof it is actually safer. ElevateCLI performs the same repair loop *inside* its own verification pipeline: every fix is reverted through the full fail-closed pipeline (SAST, dependency audit, policy, controlled execution), re-scored, and then written to the versioned audit trail as a before/after diff with a deterministic verdict and a CI-gateable exit code. It is a repeatable, auditable, fail-closed remediation loop — not a chat session you have to re-verify by hand.
+
+---
+
+```text
+Static analysis → Dependency audit → Policy enforcement → Fixed-merge verification
 ```
 
 > 🚧 **Project status: Beta / development.** ElevateCLI provides automated verification and controlled local execution. It is not production-ready for hostile or untrusted code until hardened isolation and enforced CPU, memory, filesystem, process, and network controls are implemented and independently tested.
@@ -183,6 +191,25 @@ Terminal / JSON / SARIF Report + SQLite Audit History
 ```
 
 Stages 1–3 may run in parallel. Execution is performed only after verification reaches the execution step and should not occur when a blocking condition is found.
+
+---
+
+## How It Fixes Code
+
+Undefined behavior is handled by the **fix loop**, which runs after Stages 1–3 verification and only ever accepts a fail-closed outcome:
+
+```text
+Mechanical finding → rule-driven repair (blocked-import or blocked-function removal,
+  error-handling rewrap, secret redaction, complexity reduction)
+  → re-verify → repeat until green or BLOCKED
+
+Semantic issue (bad loop, logic bug, injection) →
+  LLM proposes a patch → full pipeline re-runs on that patch → human reviews the diff
+  → fail closed if any stage fails
+```
+
+> **The LLM proposes; ElevateCLI disposes.** A fix is accepted only if re-verification passes and every stage stayed fail-closed. No fix is auto-approved by the same AI that wrote the bug — semantic patches always require human review of the diff (see [Fix loop roadmap](#roadmap)).
+
 
 ---
 
