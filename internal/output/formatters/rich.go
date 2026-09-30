@@ -44,6 +44,9 @@ func PrintRich(w io.Writer, r *sec.Report, showCode bool) error {
 	if len(r.Violations) > 0 {
 		printViolations(w, r.Violations)
 	}
+	if r.Fix != nil {
+		printFixRich(w, r.Fix)
+	}
 	if r.Sandbox.Executed {
 		printSandbox(w, r.Sandbox)
 	}
@@ -197,6 +200,58 @@ func printSandbox(w io.Writer, s sec.SandboxResult) {
 		_, _ = gray.Fprintf(w, "\n  Output:\n")
 		for _, line := range strings.Split(strings.TrimSpace(s.Stdout), "\n") {
 			_, _ = gray.Fprintf(w, "    %s\n", line)
+		}
+	}
+	fmt.Fprintf(w, "\n")
+}
+
+// printFixRich renders the fix-loop audit trail, highlighting any round that was
+// rolled back so a reviewer sees it before they look at the code.
+func printFixRich(w io.Writer, f *sec.FixLoopSummary) {
+	_, _ = bold.Fprintf(w, "  Repair Loop (%d round%s)\n", len(f.FixRounds), pluralS(len(f.FixRounds)))
+	fmt.Fprintf(w, "\n")
+
+	fmt.Fprintf(w, "  Score   ")
+	_, _ = gray.Fprintf(w, "%d", f.PreFixScore)
+	_, _ = cyan.Fprintf(w, " → ")
+	scoreColor(w, f.PostFixScore)
+	fmt.Fprintf(w, "\n")
+
+	fmt.Fprintf(w, "  Verdict ")
+	_, _ = gray.Fprintf(w, "%s", f.PreFixVerdict)
+	_, _ = cyan.Fprintf(w, " → ")
+	switch f.PostFixVerdict {
+	case sec.VerdictApproved:
+		_, _ = green.Fprintf(w, "%s", f.PostFixVerdict)
+	case sec.VerdictWarning:
+		_, _ = yellow.Fprintf(w, "%s", f.PostFixVerdict)
+	default:
+		_, _ = red.Fprintf(w, "%s", f.PostFixVerdict)
+	}
+	fmt.Fprintf(w, "\n\n")
+
+	fmt.Fprintf(w, "  Stopped ")
+	if f.PostFixVerdict == sec.VerdictApproved {
+		_, _ = green.Fprintf(w, "%s\n", f.StopReason)
+	} else {
+		_, _ = yellow.Fprintf(w, "%s\n", f.StopReason)
+	}
+
+	for _, round := range f.FixRounds {
+		fmt.Fprintf(w, "\n  Round %d ", round.Round)
+		if round.Accepted {
+			_, _ = green.Fprintf(w, "✓")
+		} else {
+			_, _ = red.Fprintf(w, "✗")
+		}
+		_, _ = gray.Fprintf(w, " [%s] %d → %d\n", round.Strategy,
+			round.PreFixScore, round.PostFixScore)
+
+		for _, rep := range round.Repairs {
+			_, _ = cyan.Fprintf(w, "     + %s\n", rep)
+		}
+		for _, un := range round.Unrepairable {
+			_, _ = yellow.Fprintf(w, "     ! %s\n", un)
 		}
 	}
 	fmt.Fprintf(w, "\n")

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/jibankumarpanda/ElevateCLI.0/internal/config"
@@ -117,6 +118,93 @@ func saveAuditRecord(cfg *config.Config, report *sec.Report) {
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "⚠ failed to save audit record: %v\n", err)
 	}
+}
+
+// checkFeatureGates enforces the experimental opt-in for the repair flags.
+//
+// The gate is explicit about which feature is missing rather than reporting a
+// generic failure, because these flags are the only way a user reaches
+// LLM-proposed code changes and a silent "unknown flag" error would send them
+// looking for a typo instead of a configuration change. Every dependent feature
+// must be listed separately: opting into fix_semantic does not imply fix_loop.
+func checkFeatureGates(fix, semantic, review bool) error {
+	exp := cfg.Experimental
+
+	if fix && !exp.FeatureEnabled(config.FeatureFixLoop) {
+		return fmt.Errorf(
+			"--fix is experimental and disabled by default; enable it by adding %q to experimental.features",
+			config.FeatureFixLoop)
+	}
+	if semantic && !exp.FeatureEnabled(config.FeatureFixSemantic) {
+		return fmt.Errorf(
+			"--fix-semantic is experimental and disabled by default; enable it by adding %q to experimental.features",
+			config.FeatureFixSemantic)
+	}
+	if review && !exp.FeatureEnabled(config.FeatureReview) {
+		return fmt.Errorf(
+			"--review is experimental and disabled by default; enable it by adding %q to experimental.features",
+			config.FeatureReview)
+	}
+
+	// A dependent feature cannot work without its dependency, and silently
+	// ignoring the missing one would produce a run that quietly does less than
+	// the user asked for.
+	if (semantic || review) && !exp.FeatureEnabled(config.FeatureFixLoop) {
+		return fmt.Errorf(
+			"this flag requires %q to be enabled in experimental.features as well",
+			config.FeatureFixLoop)
+	}
+	if semantic && !fix {
+		return fmt.Errorf("--fix-semantic requires --fix")
+	}
+	if review && !fix {
+		return fmt.Errorf("--review requires --fix")
+	}
+	return nil
+}
+
+// announceFixOutcome writes a short note to stderr describing how the repair loop
+// terminated.
+//
+// It goes to stderr rather than stdout so machine-readable output is untouched,
+// and it never claims success: the score and verdict in the report are the
+// authoritative answer, and this line only says what the loop did.
+func announceFixOutcome(report *sec.Report) {
+	if report == nil || report.Fix == nil {
+		return
+	}
+	f := report.Fix
+	fmt.Fprintf(os.Stderr, "🔧 Repair loop finished after %d round(s): %d → %d, %s → %s\n",
+		len(f.FixRounds), f.PreFixScore, f.PostFixScore, f.PreFixVerdict, f.PostFixVerdict)
+	fmt.Fprintf(os.Stderr, "   Stopped: %s\n", f.StopReason)
+	if len(f.FixRounds) == 0 {
+		fmt.Fprintf(os.Stderr, "   No repairs were needed or attempted.\n")
+		return
+	}
+	last := f.FixRounds[len(f.FixRounds)-1]
+	if last.Strategy == sec.FixStrategySemantic && last.Accepted {
+		fmt.Fprintf(os.Stderr, "   ⚠ A model-written patch was accepted; review the diff before using the code.\n")
+	}
+	for _, un := range last.Unrepairable {
+		fmt.Fprintf(os.Stderr, "   ⚠ %s\n", un)
+	}
+}
+
+// printReview renders the diff of the last repair round so a human can see
+// exactly what changed. It is deliberately plain, uncoloured output: this is
+// the artefact meant to be read and argued with, not skimmed.
+func printReview(report *sec.Report) {
+	diff := security.LastDiff(report.Fix)
+	fmt.Fprintln(os.Stderr, "\n── Review: changes made by the repair loop ──────────")
+	if strings.TrimSpace(diff) == "" {
+		fmt.Fprintln(os.Stderr, "No changes were made, so there is no diff to review.")
+		fmt.Fprintln(os.Stderr, "──────────────────────────────────────────────────")
+		return
+	}
+	fmt.Fprintln(os.Stderr, diff)
+	fmt.Fprintln(os.Stderr, "──────────────────────────────────────────────────")
+	fmt.Fprintln(os.Stderr, "Review the diff above before using this code. The verdict above")
+	fmt.Fprintln(os.Stderr, "describes the repaired code, not your approval of it.")
 }
 
 // noopSandbox satisfies the SandboxRunner interface but skips execution.

@@ -71,6 +71,11 @@ func PrintPlain(w io.Writer, r *sec.Report, showCode bool) error {
 		fmt.Fprintln(w, line)
 	}
 
+	if r.Fix != nil {
+		printFixPlain(w, r.Fix)
+		fmt.Fprintln(w, line)
+	}
+
 	if showCode && r.GeneratedCode != "" {
 		fmt.Fprintf(w, "Generated Code:\n")
 		fmt.Fprintln(w, r.GeneratedCode)
@@ -78,6 +83,43 @@ func PrintPlain(w io.Writer, r *sec.Report, showCode bool) error {
 	}
 
 	return nil
+}
+
+// printFixPlain renders the fix-loop audit trail.
+//
+// The stop reason is printed in full rather than abbreviated, because it is the
+// answer to the only question that matters about a repair: did the loop stop
+// because it fixed everything, or because it gave up? A terse "done" would blur
+// that distinction.
+func printFixPlain(w io.Writer, f *sec.FixLoopSummary) {
+	fmt.Fprintf(w, "Repair Loop (%d round%s):\n", len(f.FixRounds), pluralS(len(f.FixRounds)))
+	fmt.Fprintf(w, "  Score : %d → %d\n", f.PreFixScore, f.PostFixScore)
+	fmt.Fprintf(w, "  Verdict: %s → %s\n", f.PreFixVerdict, f.PostFixVerdict)
+	fmt.Fprintf(w, "  Stopped: %s\n", f.StopReason)
+
+	for _, round := range f.FixRounds {
+		status := "rolled back"
+		if round.Accepted {
+			status = "accepted"
+		}
+		fmt.Fprintf(w, "  Round %d [%s] %s: %d → %d (%s)\n",
+			round.Round, round.Strategy, status,
+			round.PreFixScore, round.PostFixScore, round.PostFixVerdict)
+
+		for _, rep := range round.Repairs {
+			fmt.Fprintf(w, "    + %s\n", rep)
+		}
+		for _, un := range round.Unrepairable {
+			fmt.Fprintf(w, "    ! %s\n", un)
+		}
+	}
+}
+
+func pluralS(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 // ─── SARIF formatter ──────────────────────────────────────────────────────────

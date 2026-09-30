@@ -9,20 +9,26 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/jibankumarpanda/ElevateCLI.0/internal/ai"
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/fixer"
 	"github.com/jibankumarpanda/ElevateCLI.0/internal/logger"
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/security"
 	sec "github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
 	"go.uber.org/zap"
 )
 
 func newGenerateCmd() *cobra.Command {
 	var (
-		prompt    string
-		language  string
-		model     string
-		sandbox   string
-		runCode   bool
-		dryRun    bool
-		outFormat string
+		prompt       string
+		language     string
+		model        string
+		sandbox      string
+		runCode      bool
+		dryRun       bool
+		outFormat    string
+		doFix        bool
+		fixSemantic  bool
+		fixMaxRounds int
+		showReview   bool
 	)
 
 	cmd := &cobra.Command{
@@ -38,13 +44,26 @@ func newGenerateCmd() *cobra.Command {
   elevated-cli generate --prompt "..." --output json
 
   # Dry run — see the prompt without calling the LLM
-  elevated-cli generate --prompt "..." --dry-run`,
+  elevated-cli generate --prompt "..." --dry-run
+
+  # Repair rule-driven findings, then re-verify (experimental)
+  elevated-cli generate --prompt "..." --fix --review
+
+  # Also ask the model to patch what no rule could fix (experimental)
+  elevated-cli generate --prompt "..." --fix --fix-semantic --review`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if prompt == "" {
 				return fmt.Errorf("--prompt is required")
 			}
 
 			log := logger.Get()
+
+			// ── Experimental gates ────────────────────────────────────────
+			// Checked before anything is generated so an unopted-in flag costs
+			// no LLM call and no sandbox run.
+			if err := checkFeatureGates(doFix, fixSemantic, showReview); err != nil {
+				return err
+			}
 
 			// ── Dry run ───────────────────────────────────────────────────
 			if dryRun {
@@ -129,8 +148,36 @@ func newGenerateCmd() *cobra.Command {
 				return fmt.Errorf("security pipeline failed: %w", err)
 			}
 
+			// ── Repair loop (experimental) ────────────────────────────────
+			if doFix {
+				// The patcher shares the generate context so a hung model
+				// cannot outlive the overall timeout.
+				fixOpts := security.FixLoopOptions{
+					MaxRounds: fixMaxRounds,
+					Semantic:  fixSemantic,
+				}
+				if fixSemantic {
+					fixOpts.Patch = ai.NewPatcher(client)
+				}
+
+				loop := security.NewFixLoop(pipeline, fixer.New(cfg.Policy), fixOpts)
+				fixed, err := loop.Run(pipelineCtx, report, language)
+				if err != nil {
+					return fmt.Errorf("fix loop failed: %w", err)
+				}
+				report = fixed
+				announceFixOutcome(report)
+			}
+
 			// ── Display results ───────────────────────────────────────────
 			printReport(report, cfg.Output.Format, cfg.Output.ShowCode)
+
+			// ── Review diff (experimental) ───────────────────────────────
+			// Printed after the report so the verdict is the first thing the
+			// reader sees and the diff is the evidence behind it.
+			if showReview {
+				printReview(report)
+			}
 
 			// ── Persist to the local audit trail ──────────────────────────
 			saveAuditRecord(cfg, report)
@@ -154,6 +201,13 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&runCode, "run", false, "Execute generated code in sandbox after verification")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print the prompt without calling the LLM")
 	cmd.Flags().StringVarP(&outFormat, "output", "o", "", "Output format: rich | json | sarif | plain")
+
+	// Repair flags ship dark. Each requires its experimental feature to be
+	// listed in experimental.features; see checkFeatureGates.
+	cmd.Flags().BoolVar(&doFix, "fix", false, "Repair rule-driven findings and re-verify (experimental, requires fix_loop)")
+	cmd.Flags().BoolVar(&fixSemantic, "fix-semantic", false, "Also ask the model to patch findings no rule could fix (experimental, requires fix_loop and fix_semantic)")
+	cmd.Flags().IntVar(&fixMaxRounds, "max-fix-rounds", security.DefaultFixRounds, "Maximum repair rounds before giving up")
+	cmd.Flags().BoolVar(&showReview, "review", false, "Print the before/after diff of the latest repair round (experimental, requires fix_loop)")
 
 	_ = cmd.MarkFlagRequired("prompt")
 
