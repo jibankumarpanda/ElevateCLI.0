@@ -90,27 +90,10 @@ func New(policy config.PolicyConfig) *Fixer {
 
 // Apply runs every mechanical repair applicable to the violations found in
 // code, for the given language.
-//
-// Repairs are applied in a fixed order — cheapest and most local first — so the
-// output is deterministic for identical inputs:
-//
-//  1. secret redaction (textual, language-independent)
-//  2. blocked imports
-//  3. blocked functions
-//  4. unhandled errors
-//  5. complexity reduction
-//
-// If a pass produces code that no longer parses, the original input is
-// returned unchanged with the parse failure reported as unrepairable. A broken
-// intermediate is never propagated, because the next pipeline round would score
-// meaningless syntax errors rather than the real findings.
 func (f *Fixer) Apply(code, language string, violations []sec.PolicyViolation, findings []sec.Finding) Result {
 	res := Result{Code: code}
-
 	lang := normaliseLanguage(language)
 
-	// Secret redaction is textual and language-independent, so it runs first and
-	// keeps the AST-based passes below operating on already-sanitised source.
 	if redacted := redactInCode(code); redacted != code {
 		res.Repairs = append(res.Repairs, Repair{
 			Kind:   RepairSecretRedaction,
@@ -122,45 +105,46 @@ func (f *Fixer) Apply(code, language string, violations []sec.PolicyViolation, f
 		res.Changed = true
 	}
 
-	// Only violations the policy engine actually produced are mechanically
-	// repairable. SAST findings that correspond to no rule are reported as
-	// unrepairable so the loop stops instead of silently doing nothing.
 	byRule := groupByRule(violations)
 
-	for _, kind := range []RepairKind{
-		RepairBlockedImport,
-		RepairBlockedFunction,
-		RepairUnhandledError,
-	} {
-		v := byRule[string(ruleForKind(kind))]
-		if len(v) == 0 {
-			continue
-		}
-		out, applied, unfixed := f.applyTextRepairs(res.Code, lang, kind, v)
-		res.Repairs = append(res.Repairs, applied...)
-		res.Unrepairable = append(res.Unrepairable, unfixed...)
-		if out != res.Code {
-			res.Code = out
-			res.Changed = true
+	if lang == "go" {
+		res.absorb(f.applyGoAST(res.Code, byRule))
+	} else {
+		for _, kind := range []RepairKind{
+			RepairBlockedImport,
+			RepairBlockedFunction,
+			RepairUnhandledError,
+		} {
+			v := byRule[ruleForKind(kind)]
+			if len(v) == 0 {
+				continue
+			}
+			res.absorb(applyTextRepairs(res.Code, lang, kind, v))
 		}
 	}
 
-	// Complexity reduction operates on the AST of the already-repaired source.
 	if limit := f.policy.Rules.MaxCyclomaticComplexity; limit > 0 {
-		out, applied, unfixed := reduceComplexity(res.Code, lang, limit)
-		res.Repairs = append(res.Repairs, applied...)
-		res.Unrepairable = append(res.Unrepairable, unfixed...)
-		if out != "" && out != res.Code {
-			res.Code = out
-			res.Changed = true
-		}
+		res.absorb(reduceComplexity(res.Code, lang, limit))
 	}
 
-	// Anything SAST reported but no rule covered is not mechanically fixable.
 	res.Unrepairable = append(res.Unrepairable, unrepairableFindings(findings, violations)...)
-
-	res.Changed = res.Changed || len(res.Repairs) > 0
+	res.Changed = len(res.Repairs) > 0
 	return res
+}
+
+// absorb folds a pass result into the accumulated result.
+func (r *Result) absorb(pass passResult) {
+	if pass.code != "" && pass.code != r.Code {
+		r.Code = pass.code
+	}
+	r.Repairs = append(r.Repairs, pass.repairs...)
+	r.Unrepairable = append(r.Unrepairable, pass.unrepairable...)
+}
+
+type passResult struct {
+	code         string
+	repairs      []Repair
+	unrepairable []string
 }
 
 // ruleForKind maps a repair kind to the policy rule it addresses.
