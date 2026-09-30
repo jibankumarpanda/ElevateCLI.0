@@ -141,6 +141,77 @@ type StageScores struct {
 	Sandbox int `json:"sandbox"`
 }
 
+// ─── Fix loop ────────────────────────────────────────────────────────────────
+
+// FixStrategy identifies how the patch for a fix round was produced.
+//
+// The two strategies have different trust properties. FixStrategyMechanical
+// patches come from deterministic rules with no LLM involvement, so they are
+// reproducible from the findings alone. FixStrategySemantic patches were
+// proposed by the same model class that produced the code under review, so
+// they are never trusted: they must be re-verified by the full pipeline and
+// reviewed by a human before use.
+const (
+	FixStrategyMechanical = "mechanical"
+	FixStrategySemantic   = "semantic"
+)
+
+// FixRound records one pass of the fail-closed fix loop: what was changed,
+// what the deterministic score and verdict were before and after, and the
+// diff a human needs in order to review the change.
+type FixRound struct {
+	// Round is the 1-based round number within the loop.
+	Round int `json:"round"`
+	// Strategy is FixStrategyMechanical or FixStrategySemantic.
+	Strategy string `json:"strategy"`
+	// Repairs describes each mechanical repair that was applied in this
+	// round, in application order. Empty means nothing was repairable.
+	Repairs []string `json:"repairs,omitempty"`
+	// PreFixScore and PostFixScore are the deterministic 0–100 scores
+	// before and after the patch was re-verified.
+	PreFixScore  int `json:"pre_fix_score"`
+	PostFixScore int `json:"post_fix_score"`
+	// PreFixVerdict and PostFixVerdict are the fail-closed verdicts before
+	// and after. A round is only Accepted when the verdict did not regress.
+	PreFixVerdict  Verdict `json:"pre_fix_verdict"`
+	PostFixVerdict Verdict `json:"post_fix_verdict"`
+	// Unrepairable lists violations that no mechanical rule could fix. They
+	// are the reason a loop stops without going green.
+	Unrepairable []string `json:"unrepairable,omitempty"`
+	// Diff is the unified diff from the round's input code to its output.
+	Diff string `json:"diff,omitempty"`
+	// Accepted reports whether the patch was kept. It is false when no
+	// repair applied, when the patched code failed to parse, or when the
+	// deterministic score regressed — in which case the previous code is
+	// kept and the loop stops.
+	Accepted bool `json:"accepted"`
+}
+
+// FixLoopSummary is the aggregate outcome of the fix loop, embedded in Report.
+type FixLoopSummary struct {
+	// PreFixScore is the deterministic score of the original, unpatched code.
+	PreFixScore int `json:"pre_fix_score"`
+	// PreFixVerdict is the fail-closed verdict for the original code.
+	PreFixVerdict Verdict `json:"pre_fix_verdict"`
+	// PostFixScore is the deterministic score of the final code, recomputed
+	// by re-running the full pipeline. It equals Report.FinalScore.
+	PostFixScore int `json:"post_fix_score"`
+	// PostFixVerdict is the fail-closed verdict for the final code. It
+	// equals Report.Verdict.
+	PostFixVerdict Verdict `json:"post_fix_verdict"`
+	// FixRounds is the ordered per-round audit trail, including rounds that
+	// were rolled back.
+	FixRounds []FixRound `json:"fix_rounds"`
+	// StoppedCleanly reports that the loop reached a terminal state
+	// deliberately: either every rule-driven repair converged, or a blocking
+	// condition was reached, or the round cap was hit. It never means the code
+	// is safe — only that the loop is no longer running.
+	StoppedCleanly bool `json:"stopped_cleanly"`
+	// StopReason explains which terminal state was reached, for example
+	// "converged" or "round cap reached".
+	StopReason string `json:"stop_reason"`
+}
+
 // ─── Final security report ───────────────────────────────────────────────────
 
 // Report is the complete result of the 4-stage pipeline for one piece of code.
@@ -166,6 +237,9 @@ type Report struct {
 	Duration         time.Duration `json:"total_duration"`
 	AIProvider       string        `json:"ai_provider"`
 	AIModel          string        `json:"ai_model"`
+	// Fix is the fail-closed fix loop outcome. It is nil when no fix loop ran,
+	// so a plain scan report is unchanged from the pre-fix-loop schema.
+	Fix *FixLoopSummary `json:"fix,omitempty"`
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

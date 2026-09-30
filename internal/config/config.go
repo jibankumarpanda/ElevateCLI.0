@@ -10,15 +10,16 @@ import (
 )
 
 type Config struct {
-	AI       AIConfig       `mapstructure:"ai"`
-	Database DatabaseConfig `mapstructure:"database"`
-	Sandbox  SandboxConfig  `mapstructure:"sandbox"`
-	Output   OutputConfig   `mapstructure:"output"`
-	Audit    AuditConfig    `mapstructure:"audit"`
-	Logger   LoggerConfig   `mapstructure:"logger"`
-	Policy   PolicyConfig   `mapstructure:"policy"`
-	Scoring  ScoringConfig  `mapstructure:"scoring"`
-	Analysis AnalysisConfig `mapstructure:"analysis"`
+	AI           AIConfig           `mapstructure:"ai"`
+	Database     DatabaseConfig     `mapstructure:"database"`
+	Sandbox      SandboxConfig      `mapstructure:"sandbox"`
+	Output       OutputConfig       `mapstructure:"output"`
+	Audit        AuditConfig        `mapstructure:"audit"`
+	Logger       LoggerConfig       `mapstructure:"logger"`
+	Policy       PolicyConfig       `mapstructure:"policy"`
+	Scoring      ScoringConfig      `mapstructure:"scoring"`
+	Analysis     AnalysisConfig     `mapstructure:"analysis"`
+	Experimental ExperimentalConfig `mapstructure:"experimental"`
 }
 
 // AIConfig configures the LLM provider used for code generation.
@@ -111,6 +112,49 @@ type AnalysisConfig struct {
 	CustomASTRules bool `mapstructure:"custom_ast_rules"`
 }
 
+// ExperimentalConfig gates features that are implemented but not yet stable.
+// The list is empty by default, so every experimental feature ships dark and
+// must be named here explicitly (config file or ELEVATED_CLI_EXPERIMENTAL_FEATURES)
+// before its flags are accepted.
+type ExperimentalConfig struct {
+	Features []string `mapstructure:"features"`
+}
+
+// Experimental feature identifiers. A feature must be listed in
+// ExperimentalConfig.Features before the corresponding flags take effect.
+const (
+	// FeatureFixLoop enables `generate --fix`: rule-driven mechanical repairs
+	// re-verified by the full fail-closed pipeline on every round.
+	FeatureFixLoop = "fix_loop"
+
+	// FeatureFixSemantic enables `generate --fix-semantic`: LLM-proposed
+	// patches, re-verified fail-closed, always requiring human diff review.
+	// Requires FeatureFixLoop.
+	FeatureFixSemantic = "fix_semantic"
+
+	// FeatureReview enables `generate --review`: before/after diff of the
+	// latest fix round. Requires FeatureFixLoop.
+	FeatureReview = "review"
+)
+
+// FeatureEnabled reports whether the named experimental feature is opted in.
+// Matching is case-insensitive and ignores surrounding whitespace so that
+// "fix_loop", "FIX_LOOP" and " fix_loop " behave identically. Enabling an
+// implicitly dependent feature does not enable its dependency: FeatureFixSemantic
+// and FeatureReview each require FeatureFixLoop to be listed as well.
+func (e ExperimentalConfig) FeatureEnabled(name string) bool {
+	want := strings.ToLower(strings.TrimSpace(name))
+	if want == "" {
+		return false
+	}
+	for _, f := range e.Features {
+		if strings.ToLower(strings.TrimSpace(f)) == want {
+			return true
+		}
+	}
+	return false
+}
+
 // ScoringConfig controls the deterministic security scoring algorithm.
 //
 // The final score is the weighted sum of the four stage sub-scores:
@@ -187,6 +231,12 @@ func Load(cfgFile string) (*Config, error) {
 	v.SetDefault("analysis.govulncheck", true)
 	v.SetDefault("analysis.osv_scanner", true)
 	v.SetDefault("analysis.custom_ast_rules", true)
+
+	// Experimental features ship dark: no feature is enabled by default, so
+	// --fix / --fix-semantic / --review are rejected unless the user opts in
+	// via config (`experimental.features`) or
+	// ELEVATED_CLI_EXPERIMENTAL_FEATURES.
+	v.SetDefault("experimental.features", []string{})
 
 	if cfgFile != "" {
 		v.SetConfigFile(cfgFile)
