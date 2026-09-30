@@ -61,7 +61,7 @@ func newGenerateCmd() *cobra.Command {
 			// ── Experimental gates ────────────────────────────────────────
 			// Checked before anything is generated so an unopted-in flag costs
 			// no LLM call and no sandbox run.
-			if err := checkFeatureGates(doFix, fixSemantic, showReview); err != nil {
+			if err := checkFeatureGates(cfg.Experimental, doFix, fixSemantic, showReview); err != nil {
 				return err
 			}
 

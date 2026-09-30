@@ -122,14 +122,15 @@ func saveAuditRecord(cfg *config.Config, report *sec.Report) {
 
 // checkFeatureGates enforces the experimental opt-in for the repair flags.
 //
+// The configuration is passed in rather than read from the global, so the gate
+// is testable and cannot be affected by config load order.
+//
 // The gate is explicit about which feature is missing rather than reporting a
 // generic failure, because these flags are the only way a user reaches
 // LLM-proposed code changes and a silent "unknown flag" error would send them
 // looking for a typo instead of a configuration change. Every dependent feature
 // must be listed separately: opting into fix_semantic does not imply fix_loop.
-func checkFeatureGates(fix, semantic, review bool) error {
-	exp := cfg.Experimental
-
+func checkFeatureGates(exp config.ExperimentalConfig, fix, semantic, review bool) error {
 	if fix && !exp.FeatureEnabled(config.FeatureFixLoop) {
 		return fmt.Errorf(
 			"--fix is experimental and disabled by default; enable it by adding %q to experimental.features",

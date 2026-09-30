@@ -5,22 +5,20 @@ import (
 	"testing"
 
 	"github.com/jibankumarpanda/ElevateCLI.0/internal/config"
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/security"
 	sec "github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
 )
 
-// withFeatures replaces the package-level config for one test and restores it,
-// since checkFeatureGates reads the shared cfg.
-func withFeatures(t *testing.T, features ...string) {
-	t.Helper()
-	prev := cfg
-	cfg.Experimental = config.ExperimentalConfig{Features: features}
-	t.Cleanup(func() { cfg = prev })
+// experimental returns an ExperimentalConfig with exactly the named features
+// enabled, so each test states precisely which opt-ins it is exercising.
+func experimental(features ...string) config.ExperimentalConfig {
+	return config.ExperimentalConfig{Features: features}
 }
 
 func TestFeatureGatesRejectEveryUnflaggedFlag(t *testing.T) {
 	cases := []struct {
-		name                        string
-		fix, semantic, review       bool
+		name                  string
+		fix, semantic, review bool
 	}{
 		{"fix", true, false, false},
 		{"fix-semantic", true, true, false},
@@ -29,9 +27,7 @@ func TestFeatureGatesRejectEveryUnflaggedFlag(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			withFeatures(t) // no features enabled
-
-			err := checkFeatureGates(tc.fix, tc.semantic, tc.review)
+			err := checkFeatureGates(experimental(), tc.fix, tc.semantic, tc.review)
 			if err == nil {
 				t.Fatal("an unopted-in experimental flag must be refused")
 			}
@@ -43,8 +39,8 @@ func TestFeatureGatesRejectEveryUnflaggedFlag(t *testing.T) {
 }
 
 func TestFeatureGatesAllowFullyOptedInRun(t *testing.T) {
-	withFeatures(t, config.FeatureFixLoop, config.FeatureFixSemantic, config.FeatureReview)
-	if err := checkFeatureGates(true, true, true); err != nil {
+	exp := experimental(config.FeatureFixLoop, config.FeatureFixSemantic, config.FeatureReview)
+	if err := checkFeatureGates(exp, true, true, true); err != nil {
 		t.Fatalf("a fully opted-in run must be allowed, got: %v", err)
 	}
 }
@@ -52,8 +48,7 @@ func TestFeatureGatesAllowFullyOptedInRun(t *testing.T) {
 func TestFeatureGatesRequireDependency(t *testing.T) {
 	// Opting into fix_semantic must not silently enable fix_loop; a missing
 	// dependency is an error rather than a quietly narrower run.
-	withFeatures(t, config.FeatureFixSemantic)
-	err := checkFeatureGates(true, true, false)
+	err := checkFeatureGates(experimental(config.FeatureFixSemantic), true, true, false)
 	if err == nil {
 		t.Fatal("fix_semantic without fix_loop must be refused")
 	}
@@ -63,12 +58,12 @@ func TestFeatureGatesRequireDependency(t *testing.T) {
 }
 
 func TestFeatureGatesRequireTheFixFlag(t *testing.T) {
-	withFeatures(t, config.FeatureFixLoop, config.FeatureFixSemantic, config.FeatureReview)
+	exp := experimental(config.FeatureFixLoop, config.FeatureFixSemantic, config.FeatureReview)
 
-	if err := checkFeatureGates(false, true, false); err == nil {
+	if err := checkFeatureGates(exp, false, true, false); err == nil {
 		t.Error("--fix-semantic without --fix must be refused")
 	}
-	if err := checkFeatureGates(false, false, true); err == nil {
+	if err := checkFeatureGates(exp, false, false, true); err == nil {
 		t.Error("--review without --fix must be refused")
 	}
 }
@@ -76,9 +71,18 @@ func TestFeatureGatesRequireTheFixFlag(t *testing.T) {
 func TestFeatureGatesIgnoreUnflaggedFeatures(t *testing.T) {
 	// Every feature enabled but no flag set must not fail: the gate exists to
 	// block unrequested behaviour, not to require it.
-	withFeatures(t, config.FeatureFixLoop, config.FeatureFixSemantic, config.FeatureReview)
-	if err := checkFeatureGates(false, false, false); err != nil {
+	exp := experimental(config.FeatureFixLoop, config.FeatureFixSemantic, config.FeatureReview)
+	if err := checkFeatureGates(exp, false, false, false); err != nil {
 		t.Fatalf("a plain generate must work with features enabled, got: %v", err)
+	}
+}
+
+func TestFeatureGatesAreCaseInsensitive(t *testing.T) {
+	// The gate must not be a place where a config typo silently disables the
+	// feature or a differently-cased entry silently enables it.
+	exp := experimental("FIX_LOOP", " fix_semantic ", "Review")
+	if err := checkFeatureGates(exp, true, true, true); err != nil {
+		t.Fatalf("casing and whitespace must not matter, got: %v", err)
 	}
 }
 
@@ -97,12 +101,7 @@ func TestLastDiffPrefersTheLatestRound(t *testing.T) {
 			{Round: 2, Diff: "round two diff"},
 		},
 	}
-	if got := lastDiffFor(summary); got != "round two diff" {
+	if got := security.LastDiff(summary); got != "round two diff" {
 		t.Errorf("LastDiff = %q, want the latest round's diff", got)
 	}
-}
-
-// lastDiffFor is a thin wrapper so the tests read as behaviour, not plumbing.
-func lastDiffFor(summary *sec.FixLoopSummary) string {
-	return securityLastDiff(summary)
 }
