@@ -37,7 +37,7 @@ func applyTextRepairs(code, lang string, kind RepairKind, vs []sec.PolicyViolati
 
 		switch kind {
 		case RepairBlockedImport:
-			handled, ok := planImportRemoval(lines, idx, v)
+			handled, ok := planImportRemoval(lines, idx, v, lang)
 			if !ok {
 				out.unrepairable = append(out.unrepairable, handled)
 				continue
@@ -89,31 +89,75 @@ func applyTextRepairs(code, lang string, kind RepairKind, vs []sec.PolicyViolati
 }
 
 // planImportRemoval decides whether the whole offending line is an import
-// declaration that can be deleted. It returns a human-readable refusal when the
-// line holds more than the import.
-func planImportRemoval(lines []string, idx int, v sec.PolicyViolation) (string, bool) {
+// declaration that can be deleted, and only when nothing else on that line would
+// be lost with it. It returns a human-readable refusal otherwise.
+//
+// The multi-name cases matter: dropping `import subprocess, sys` to fix one
+// blocked import would also delete an unrelated import and break the module, so
+// a line that names anything besides the blocked target is refused.
+func planImportRemoval(lines []string, idx int, v sec.PolicyViolation, lang string) (string, bool) {
 	trimmed := strings.TrimSpace(stripComment(lines[idx]))
 	if trimmed == "" {
 		return "", false
 	}
 
-	// A multi-line or parenthesised import block puts the spec on its own line,
-	// which is the only shape that can be removed without touching neighbours.
 	switch {
-	case strings.HasPrefix(trimmed, "import "), strings.HasPrefix(trimmed, "from "):
-		// Single-line form: `import x` / `from x import a, b` — safe to drop.
+	// Python: `import X` or `import X, Y`
+	case strings.HasPrefix(trimmed, "import "):
+		names := strings.Split(strings.TrimPrefix(trimmed, "import "), ",")
+		for _, name := range names {
+			name = strings.TrimSpace(name)
+			// `import X as Y` binds a different local name; refuse rather than
+			// guess which side is blocked.
+			if strings.Contains(name, " as ") {
+				return importRefusal(v, trimmed, "a renamed import must be removed by hand"), false
+			}
+			if name != v.Value {
+				return importRefusal(v, trimmed,
+					"the line also imports "+name+", which would be deleted along with it"), false
+			}
+		}
 		return "", true
+
+	// Python: `from X import a, b`
+	case strings.HasPrefix(trimmed, "from "):
+		rest := strings.TrimPrefix(trimmed, "from ")
+		module, _, found := strings.Cut(rest, " import ")
+		if !found {
+			return importRefusal(v, trimmed, "not a complete from-import"), false
+		}
+		if strings.TrimSpace(module) != v.Value {
+			return importRefusal(v, trimmed,
+				"the line imports module "+strings.TrimSpace(module)+", not "+v.Value), false
+		}
+		return "", true
+
+	// JavaScript/TypeScript: `import x from 'y'`, `import 'y'`, or a require call.
+	case strings.HasPrefix(trimmed, "import ") || strings.HasPrefix(trimmed, "const "):
+		if !strings.Contains(trimmed, v.Value) {
+			return importRefusal(v, trimmed, "the import on this line targets a different module"), false
+		}
+		if lang == "javascript" || lang == "typescript" {
+			return "", true
+		}
+		return importRefusal(v, trimmed, "unrecognised import form"), false
+
+	// A bare spec inside a parenthesised block: `    os,` or `    "os/exec"`.
 	case trimmed == strings.TrimSpace(v.Value):
-		// Bare spec inside a parenthesised block: `    os,` or `    "os/exec"`.
 		return "", true
 	case strings.HasSuffix(strings.TrimSuffix(trimmed, ","), strings.TrimSpace(v.Value)):
 		return "", true
 	}
 
+	return importRefusal(v, trimmed, "the import shares its line with other code"), false
+}
+
+// importRefusal builds the standard refusal message for a blocked import that
+// cannot be removed without damaging neighbouring code.
+func importRefusal(v sec.PolicyViolation, line, reason string) string {
 	return fmt.Sprintf(
-		"%s at line %d: the import shares its line with other code (%q), so removing it would "+
-			"change unrelated logic; move it to its own line or handle it by hand",
-		v.Rule, v.Line, trimmed), false
+		"%s at line %d: cannot remove import %q automatically because %s (%q); handle it by hand",
+		v.Rule, v.Line, v.Value, reason, line)
 }
 
 // planCallRemoval decides whether the offending line is a standalone call whose

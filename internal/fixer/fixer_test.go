@@ -1,6 +1,7 @@
 package fixer
 
 import (
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"strings"
@@ -235,19 +236,25 @@ func classify(a int, b int, c int) string {
 		t.Errorf("condition was not replaced by the predicate call:\n%s", got.Code)
 	}
 
-	// The original function must now be under the limit, and the helper must
-	// preserve the exact boolean semantics.
+	// The original function must now be under the limit.
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "out.go", got.Code, parser.ParseComments)
 	if err != nil {
 		t.Fatalf("reparse failed: %v", err)
 	}
+	found := false
 	for _, decl := range file.Decls {
-		fn, ok := decl.(*declFunc)
-		_ = fn
-		if !ok {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != "classify" {
 			continue
 		}
+		found = true
+		if c := complexityOf(fn.Body); c > 4 {
+			t.Errorf("classify still exceeds the limit after reduction: complexity %d", c)
+		}
+	}
+	if !found {
+		t.Fatalf("classify disappeared from the repaired output:\n%s", got.Code)
 	}
 	if !strings.Contains(got.Code, "return a > 0 && b > 0 && c > 0") {
 		t.Errorf("helper must preserve the original short-circuit expression:\n%s", got.Code)
