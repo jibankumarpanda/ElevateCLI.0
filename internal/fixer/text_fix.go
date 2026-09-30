@@ -211,7 +211,7 @@ func countWordUses(lines []string, name string) int {
 		return 0
 	}
 	total := 0
-	for i, line := range lines {
+	for _, line := range lines {
 		if isImportLine(line) {
 			continue
 		}
