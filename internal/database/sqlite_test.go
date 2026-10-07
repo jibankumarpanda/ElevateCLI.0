@@ -193,6 +193,59 @@ func TestSaveReportRetentionDropsPromptAndCode(t *testing.T) {
 	}
 }
 
+func TestSaveReportPersistsFixSummary(t *testing.T) {
+	// The fix-loop audit trail is part of the evidence for a scan result. If it
+	// is dropped on the way to disk, a later `history show` cannot tell whether
+	// the score was reached by repairs or arrived already clean.
+	db := openTempDB(t)
+	r := testReport("fix-round-trip", time.Now())
+	r.FinalScore = 96
+	r.Verdict = sec.VerdictWarning
+	r.Fix = &sec.FixLoopSummary{
+		PreFixScore:    68,
+		PreFixVerdict:  sec.VerdictWarning,
+		PostFixScore:   96,
+		PostFixVerdict: sec.VerdictWarning,
+		StoppedCleanly: true,
+		StopReason:     "remaining findings need human judgement",
+		FixRounds: []sec.FixRound{
+			{
+				Round: 1, Strategy: sec.FixStrategySemantic, Accepted: true,
+				PreFixScore: 68, PostFixScore: 96,
+				Repairs: []string{"removed blocked import \"os/exec\""},
+				Diff:    "--- a\n+++ b\n",
+			},
+		},
+	}
+
+	if err := db.SaveReport(r, legacy); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.GetReport(context.Background(), "fix-round-trip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Fix == nil {
+		t.Fatal("fix summary was not persisted")
+	}
+	if got.Fix.PreFixScore != 68 || got.Fix.PostFixScore != 96 {
+		t.Errorf("scores not preserved: %+v", got.Fix)
+	}
+	if len(got.Fix.FixRounds) != 1 {
+		t.Fatalf("expected 1 round, got %d", len(got.Fix.FixRounds))
+	}
+	round := got.Fix.FixRounds[0]
+	if round.Strategy != sec.FixStrategySemantic || !round.Accepted {
+		t.Errorf("round metadata not preserved: %+v", round)
+	}
+	if round.Diff == "" || len(round.Repairs) != 1 {
+		t.Errorf("round evidence not preserved: %+v", round)
+	}
+	if got.Fix.StopReason != r.Fix.StopReason {
+		t.Errorf("stop reason = %q, want %q", got.Fix.StopReason, r.Fix.StopReason)
+	}
+}
+
 func TestSaveReportDoesNotMutateCallerReport(t *testing.T) {
 	db := openTempDB(t)
 	r := testReport("keep-orig", time.Now())
