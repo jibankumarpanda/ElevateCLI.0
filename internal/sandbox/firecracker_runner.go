@@ -28,7 +28,12 @@ var (
 )
 
 // kvmOpen is a package var so tests can simulate an un-writable KVM device.
-var kvmOpen = func(p string) (*os.File, error) { return os.OpenFile(p, os.O_RDWR, 0) }
+var kvmOpen = func(p string) (*os.File, error) {
+	// #nosec G304 -- path is always the fixed /dev/kvm device (kvmDevice), not
+	// user- or remote-controlled input; it is opened read-write purely to
+	// check that the KVM device is accessible to this user.
+	return os.OpenFile(p, os.O_RDWR, 0)
+}
 
 // FirecrackerRunner is the microVM execution backend.
 //

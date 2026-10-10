@@ -49,6 +49,10 @@ var probeGVisor = func() (bool, error) {
 				return
 			}
 		}
+		// #nosec G204 -- bin is either the constant "runsc" or the operator-set
+		// ELEVATED_CLI_RUNSC_BINARY path, and it has already been resolved by
+		// exec.LookPath above; no generated or otherwise tainted input reaches
+		// this argv.
 		if out, err := exec.Command(bin, "--version").CombinedOutput(); err != nil {
 			gvisorProbeErr = fmt.Errorf("gVisor binary %q version probe failed: %v (%s)", bin, err, strings.TrimSpace(string(out)))
 			return
@@ -163,6 +167,9 @@ func (g *GVisorRunner) Run(ctx context.Context, code, language string) (sec.Sand
 		if _, err := exec.LookPath("prlimit"); err != nil {
 			return failClosed(fmt.Sprintf("memory limits require the 'prlimit' utility (util-linux): %v", err))
 		}
+		// #nosec G204 -- prlimit is a fixed binary and the only interpolated
+		// value is a numeric, config-derived memory cap; generated code is
+		// written to a file and never passed as a command argument.
 		wrapped := exec.CommandContext(timeoutCtx, "prlimit",
 			fmt.Sprintf("--as=%d", uint64(g.maxMemoryMB)*1024*1024), "--")
 		wrapped.Args = append(wrapped.Args, hcmd.Args...)
