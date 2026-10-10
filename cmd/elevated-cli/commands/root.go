@@ -85,5 +85,6 @@ func init() {
 		newAuditCmd(),
 		newHistoryCmd(),
 		newConfigCmd(),
+		newVersionCmd(),
 	)
 }

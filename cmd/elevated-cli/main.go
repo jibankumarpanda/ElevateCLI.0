@@ -5,5 +5,6 @@ import (
 )
 
 func main() {
+	commands.SetBuildInfo(Version, Commit, Date)
 	commands.Execute()
 }

@@ -409,6 +409,7 @@ elevated-cli history --id <scan-id>
 | `audit` | Verify an existing file or directory |
 | `history` | Browse previous audit reports stored in SQLite |
 | `config` | Display or modify ElevateCLI configuration |
+| `version` | Print version, commit, and build date (also available as `--version`) |
 
 ### Global Flags
 
@@ -474,6 +475,18 @@ elevated-cli config --set ai.model=gpt-4o
 |---|---|
 | `--show` | Print resolved configuration |
 | `--set` | Set a configuration value using `key=value` (currently prints instructions; does not write to config file) |
+
+### `version`
+
+```bash
+elevated-cli version
+elevated-cli --version
+elevated-cli version --output json   # {"version":...,"commit":...,"date":...}
+```
+
+Prints the version, commit, and build date injected at build time. Release
+binaries built by GoReleaser (`make build-release`) carry real values; a plain
+`go build` reports `dev` / `none` / `unknown`.
 
 ---
 
