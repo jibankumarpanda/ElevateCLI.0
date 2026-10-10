@@ -79,11 +79,6 @@ func (g *GVisorRunner) Run(ctx context.Context, code, language string) (sec.Sand
 	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(g.timeoutSec)*time.Second)
 	defer cancel()
 
-	// The gVisor boundary must be provably available before any code runs.
-	if ok, err := probeGVisor(); !ok {
-		return failClosed(fmt.Sprintf("gVisor boundary unavailable and refusing to fall back to host process execution: %v", err))
-	}
-
 	rootFS := g.rootFS
 	workDir, err := os.MkdirTemp("", "elevated-gvisor-*")
 	if err != nil {
@@ -112,6 +107,10 @@ func (g *GVisorRunner) Run(ctx context.Context, code, language string) (sec.Sand
 	// Reuse the per-language command construction (allowlist of interpreters)
 	// from the process runner. buildCommand resolves the interpreter to an
 	// absolute path (cmd.Path) which is what the sandboxed guest sees.
+	//
+	// This runs BEFORE the gVisor probe on purpose: an unsupported language is a
+	// deliberate skip and never needs a sandbox boundary, so it must not fail
+	// merely because runsc is absent.
 	cmd, err := buildCommand(timeoutCtx, codeFile, language, workDir)
 	if err != nil {
 		return sec.SandboxResult{
@@ -120,6 +119,11 @@ func (g *GVisorRunner) Run(ctx context.Context, code, language string) (sec.Sand
 			SkipReason: fmt.Sprintf("unsupported language for sandbox: %s", language),
 			Mode:       "gvisor",
 		}, nil
+	}
+
+	// The gVisor boundary must be provably available before any code runs.
+	if ok, err := probeGVisor(); !ok {
+		return failClosed(fmt.Sprintf("gVisor boundary unavailable and refusing to fall back to host process execution: %v", err))
 	}
 
 	argv := make([]string, 0, 8+len(cmd.Args))
