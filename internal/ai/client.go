@@ -50,7 +50,7 @@ func newOpenAIClient(cfg config.AIConfig) (*openAIClient, error) {
 	if cfg.APIKey == "" {
 		return nil, &sec.AIProviderError{
 			Provider: "openai",
-			Message:  "api_key is empty — set OPENAI_API_KEY environment variable",
+			Message:  "api_key is empty — set ELEVATED_CLI_AI_API_KEY (or OPENAI_API_KEY) in the environment",
 		}
 	}
 	return &openAIClient{
@@ -101,7 +101,7 @@ func newAnthropicClient(cfg config.AIConfig) (*anthropicClient, error) {
 	if cfg.APIKey == "" {
 		return nil, &sec.AIProviderError{
 			Provider: "anthropic",
-			Message:  "api_key is empty — set ANTHROPIC_API_KEY environment variable",
+			Message:  "api_key is empty — set ELEVATED_CLI_AI_API_KEY (or ANTHROPIC_API_KEY) in the environment",
 		}
 	}
 	return &anthropicClient{

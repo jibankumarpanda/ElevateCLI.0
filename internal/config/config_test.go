@@ -119,6 +119,77 @@ func TestLoadEnvOverride(t *testing.T) {
 	}
 }
 
+func TestLoadAPIKeyFromPrefixedEnv(t *testing.T) {
+	// Regression: before the fix, ELEVATED_CLI_AI_API_KEY was silently ignored
+	// whenever the config file did not already declare ai.api_key, so a fresh
+	// checkout could never authenticate even with the documented env var set.
+	t.Setenv("ELEVATED_CLI_AI_API_KEY", "sk-prefixed")
+	t.Setenv("OPENAI_API_KEY", "")
+
+	cfg, err := Load(writeTempConfig(t, "# no ai.api_key declared\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.AI.APIKey != "sk-prefixed" {
+		t.Errorf("ai.api_key = %q, want the prefixed env value", cfg.AI.APIKey)
+	}
+}
+
+func TestLoadAPIKeyFallsBackToProviderEnv(t *testing.T) {
+	// The conventional provider variable is accepted as a fallback so users do
+	// not have to relearn the env var name.
+	t.Setenv("ELEVATED_CLI_AI_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "sk-openai")
+
+	cfg, err := Load(writeTempConfig(t, "ai:\n  provider: openai\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.AI.APIKey != "sk-openai" {
+		t.Errorf("ai.api_key = %q, want the OPENAI_API_KEY fallback", cfg.AI.APIKey)
+	}
+}
+
+func TestLoadAPIKeyAnthropicFallback(t *testing.T) {
+	t.Setenv("ELEVATED_CLI_AI_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant")
+
+	cfg, err := Load(writeTempConfig(t, "ai:\n  provider: anthropic\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.AI.APIKey != "sk-ant" {
+		t.Errorf("ai.api_key = %q, want the ANTHROPIC_API_KEY fallback", cfg.AI.APIKey)
+	}
+}
+
+func TestLoadAPIKeyPrefixedWinsOverProviderEnv(t *testing.T) {
+	t.Setenv("ELEVATED_CLI_AI_API_KEY", "sk-prefixed")
+	t.Setenv("OPENAI_API_KEY", "sk-openai")
+
+	cfg, err := Load(writeTempConfig(t, "ai:\n  provider: openai\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.AI.APIKey != "sk-prefixed" {
+		t.Errorf("ai.api_key = %q, want the prefixed value to take precedence", cfg.AI.APIKey)
+	}
+}
+
+func TestLoadAPIKeyEmptyWhenNothingSet(t *testing.T) {
+	t.Setenv("ELEVATED_CLI_AI_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+
+	cfg, err := Load(writeTempConfig(t, "# nothing set\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.AI.APIKey != "" {
+		t.Errorf("ai.api_key = %q, want empty when no env var is set", cfg.AI.APIKey)
+	}
+}
+
 func TestLoadInvalidYAML(t *testing.T) {
 	path := writeTempConfig(t, "ai: [not, a, map\n")
 	if _, err := Load(path); err == nil {

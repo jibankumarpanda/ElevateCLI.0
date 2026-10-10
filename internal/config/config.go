@@ -190,6 +190,7 @@ func Load(cfgFile string) (*Config, error) {
 	// Set defaults
 	v.SetDefault("ai.provider", "openai")
 	v.SetDefault("ai.model", "gpt-4o")
+	v.SetDefault("ai.api_key", "")
 	v.SetDefault("ai.endpoint", "http://localhost:11434")
 	v.SetDefault("ai.timeout_sec", 120)
 	v.SetDefault("database.path", "elevated-cli.db")
@@ -263,6 +264,24 @@ func Load(cfgFile string) (*Config, error) {
 			return nil, fmt.Errorf("failed to read config: %w", err)
 		}
 		// Config file not found is fine, we use defaults or env vars
+	}
+
+	// API key resolution from the environment. Viper's AutomaticEnv does not
+	// populate a key during Unmarshal unless it is already known, so the key is
+	// bound explicitly. ELEVATED_CLI_AI_API_KEY always wins; the conventional
+	// provider variable (OPENAI_API_KEY / ANTHROPIC_API_KEY) is accepted as a
+	// fallback so a fresh checkout works with the env vars users already have.
+	apiKeyEnv := []string{"ai.api_key", "ELEVATED_CLI_AI_API_KEY"}
+	switch strings.ToLower(v.GetString("ai.provider")) {
+	case "anthropic":
+		apiKeyEnv = append(apiKeyEnv, "ANTHROPIC_API_KEY")
+	case "local", "ollama":
+		// Local providers do not use an API key.
+	default:
+		apiKeyEnv = append(apiKeyEnv, "OPENAI_API_KEY")
+	}
+	if err := v.BindEnv(apiKeyEnv...); err != nil {
+		return nil, fmt.Errorf("binding ai.api_key environment variables: %w", err)
 	}
 
 	var cfg Config

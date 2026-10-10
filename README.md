@@ -357,8 +357,16 @@ policy:
 Set API credentials through environment variables:
 
 ```bash
+# Preferred — works for any provider:
 export ELEVATED_CLI_AI_API_KEY="your-api-key"
+
+# Conventional provider variables are also accepted as a fallback:
+export OPENAI_API_KEY="sk-..."        # when ai.provider: openai
+export ANTHROPIC_API_KEY="sk-ant-..." # when ai.provider: anthropic
 ```
+
+`ELEVATED_CLI_AI_API_KEY` always takes precedence. These work even without a
+config file, so a fresh checkout only needs the env var.
 
 > Never commit API keys, credentials, tokens, `.env` files, or personal configuration files to source control.
 
