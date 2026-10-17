@@ -1260,32 +1260,32 @@ Before a release should be considered secure enough for broader internal testing
 
 ### P1 — Secure MVP Improvements
 
-- [ ] Strong syntax validation for all supported languages
-- [ ] More robust multi-language analyzers
-- [ ] **Experimental, not yet shipped:** the fail-closed fix loop — rule-driven mechanical repairs plus LLM-proposed semantic patches, both re-verified and fail-closed, with `--fix`, `--fix-semantic`, and `--review` (flags documented in [generate](#generate) but gated behind `experimental.features` until released)
-- [ ] Explicit policy severity and action schema
+- [ ] Strong syntax validation for all supported languages (Go uses `go/parser`; Python/JavaScript/TypeScript are pattern-checked only, not parsed)
+- [ ] More robust multi-language analyzers (Python/JavaScript/TypeScript remain pattern-based)
+- [x] Fail-closed fix loop — rule-driven mechanical repairs plus LLM-proposed semantic patches, both re-verified and fail-closed, with `--fix`, `--fix-semantic`, and `--review` (implemented and shipped **opt-in**: the flags are refused unless the feature is listed in `experimental.features`, which is empty by default)
+- [x] Remediation guidance on findings (per-rule suggestion text for gosec rule IDs and custom AST checks, surfaced in every report format)
+- [x] Improved SARIF metadata (tool driver name/version, deduplicated rule descriptors, rule properties, and per-result severity levels)
+- [ ] Explicit policy severity and action schema (policy rules currently have no per-rule `severity`/`action`; blocking is implicit)
 - [ ] Policy file versioning
-- [ ] Better remediation guidance
-- [ ] Improved SARIF metadata
-- [ ] CI gating based on verified exit-code behavior
-- [ ] Test fixtures for vulnerable and malicious code
-- [ ] Database retention controls
+- [ ] CI gating based on verified exit-code behavior (CI builds and runs tests, but does not yet invoke the binary to gate on its verdict exit codes)
+- [ ] Test fixtures for vulnerable and malicious code (`test/data/` contains only empty scaffolding)
+- [ ] Database retention controls (no time- or count-based pruning of audit records)
 - [ ] Optional encrypted audit storage
 
 ### P2 — Production Hardening
 
-- [ ] Firecracker microVM orchestration
+- [ ] Firecracker microVM orchestration (fail-closed stub only; `sandbox.mode: firecracker` refuses to fall back to host execution)
 - [x] gVisor runtime support
-- [ ] Hardened Docker/container profile, if adopted
+- [ ] Hardened Docker/container profile, if adopted (`sandbox.mode: docker` fails closed; no container runner exists)
 - [ ] SBOM generation
-- [ ] Signed binaries
-- [ ] Reproducible builds
-- [ ] Release provenance
-- [ ] Dependency pinning and supply-chain verification
+- [ ] Signed binaries (GoReleaser emits checksums but no cosign/gpg signatures)
+- [ ] Reproducible builds (no `-trimpath`, `-buildvcs`, or `SOURCE_DATE_EPOCH`; build embeds a wall-clock date)
+- [ ] Release provenance (release workflow has no `id-token: write` / build attestation)
+- [ ] Dependency pinning and supply-chain verification (partial: `go.sum` checksums, Dependabot for Go modules and Actions, and a scheduled `govulncheck` workflow; no dependency-review gate, no `go mod verify`, Actions pinned by tag not SHA)
 - [ ] Metrics and observability
-- [ ] Policy bundles
-- [ ] Plugin architecture
-- [ ] Enterprise identity, access, and centralized audit export
+- [ ] Policy bundles (single inline ruleset only; no bundle loading, signing, or versioning)
+- [ ] Plugin architecture (all analyzers are compiled in; no external-plugin loading)
+- [ ] Enterprise identity, access, and centralized audit export (local SQLite history only; no SSO/OIDC or audit shipping)
 
 > Until these P0 controls are implemented and independently tested, ElevateCLI is appropriate only for controlled local development and security-review workflows—not hostile-code execution or production security enforcement.
 
