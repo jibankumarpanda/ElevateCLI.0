@@ -1,0 +1,15 @@
+{
+  "vulnerable": {
+    "python_cmd_injection.py": { "language": "python", "min_high": 1 },
+    "javascript_xss.js": {"language": "javascript", "min_high": 1},
+    "go_cmd_injection.go": {"language": "go", "min_high": 1}
+  },
+  "malicious": {
+    "reverse_shell.py": {"language": "python", "min_high": 1},
+    "data_exfil.js": {"language": "javascript", "min_high": 3}
+  },
+  "safe": {
+    "python_clean.py": {"language": "python"},
+    "go_clean.go": {"language": "go"}
+  }
+}
