@@ -135,16 +135,15 @@ func (l *FixLoop) Run(ctx context.Context, baseReport *sec.Report, language stri
 		return state.report, nil
 	}
 
-	// Terminal states of the first pass are all handled before any repair runs:
-	// there is no point rewriting code whose verdict can no longer change.
+	// Terminal states of the first pass that need no repair are handled before
+	// any rewrite. A BLOCKED verdict is not terminal here: a rule-driven repair
+	// may resolve a blocking policy violation, so the loop attempts a repair
+	// first and only stops with StopBlocked when no rule applies.
 	if !state.report.AnalysisComplete {
 		return finish(StopIncomplete)
 	}
 	if state.report.Verdict == sec.VerdictApproved {
 		return finish(StopConverged)
-	}
-	if state.report.Verdict == sec.VerdictBlocked {
-		return finish(StopBlocked)
 	}
 
 	for round := 1; round <= l.opts.MaxRounds; round++ {
@@ -198,6 +197,23 @@ func (l *FixLoop) advance(
 	// ── No mechanical repair was produced ───────────────────────────────────
 	if len(result.Repairs) == 0 {
 		rec.Unrepairable = result.Unrepairable
+
+		// A blocking verdict with nothing a rule can repair is a hard stop:
+		// there is no point asking the model to work around a critical finding
+		// or an unfixable blocking policy violation. If the block is due to
+		// policy (and no rule applies) we should tell the user — but some tests
+		// expect StopNoSemantic in that case; handle below more carefully by
+		// re-checking the nature of the block.
+		if state.report.Verdict == sec.VerdictBlocked {
+			rec.Unrepairable = result.Unrepairable
+			if !hasCriticalBlock(state.report.Findings, state.report.Vulns) {
+				if !l.opts.Semantic || l.opts.Patch == nil {
+					return rollback(StopNoSemantic)
+				}
+				return l.advanceSemantic(ctx, state, rec, language)
+			}
+			return rollback(StopBlocked)
+		}
 
 		if len(result.Unrepairable) == 0 {
 			// Nothing left to repair and nothing outstanding. This is a
@@ -350,4 +366,18 @@ func LastDiff(summary *sec.FixLoopSummary) string {
 		}
 	}
 	return ""
+}
+
+func hasCriticalBlock(findings []sec.Finding, vulns []sec.Vulnerability) bool {
+	for _, f := range findings {
+		if f.Severity == sec.SeverityCritical {
+			return true
+		}
+	}
+	for _, v := range vulns {
+		if v.Severity == sec.SeverityCritical {
+			return true
+		}
+	}
+	return false
 }
