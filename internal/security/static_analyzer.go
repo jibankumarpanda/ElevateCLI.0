@@ -64,9 +64,11 @@ func (a *StaticAnalyzerImpl) Analyze(ctx context.Context, code, language string)
 		findings = append(findings, gosecFindings...)
 
 	case "python", "python3":
+		findings = append(findings, validateSyntax(code, "python")...)
 		findings = append(findings, runPatternCheck(code, "python")...)
 
 	case "javascript", "js", "typescript", "ts":
+		findings = append(findings, validateSyntax(code, "javascript")...)
 		findings = append(findings, runPatternCheck(code, "javascript")...)
 
 	default:

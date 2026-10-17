@@ -36,7 +36,7 @@ func newHistoryCmd() *cobra.Command {
   # Show full report for a scan ID
   elevated-cli history --id abc123`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			db, err := database.Open(cfg.Output.AuditDB)
+			db, err := openAuditDB(cfg)
 			if err != nil {
 				return fmt.Errorf("opening audit database: %w", err)
 			}

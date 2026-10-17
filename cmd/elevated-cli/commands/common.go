@@ -2,12 +2,14 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/audit"
 	"github.com/jibankumarpanda/ElevateCLI.0/internal/config"
 	"github.com/jibankumarpanda/ElevateCLI.0/internal/database"
 	"github.com/jibankumarpanda/ElevateCLI.0/internal/output"
@@ -66,12 +68,22 @@ func buildPipeline(cfg config.Config, runSandbox bool, srcDir string) (*security
 				},
 			)
 		case "docker":
-			// Docker execution is documented as a config value but has no
-			// implemented runner. Fail closed (ANALYSIS_INCOMPLETE) rather than
-			// silently substituting host os/exec execution.
-			sandboxRunner = &unavailableSandbox{
-				reason: "sandbox.mode: docker is not implemented; no container runner is available",
-			}
+			// Docker executes the generated code in a disposable, hardened
+			// container: no network, read-only root with a tmpfs /tmp, dropped
+			// capabilities, a non-root user, and memory/CPU/PID caps. Fails
+			// closed if the daemon or image is unavailable; never degrades to
+			// host os/exec.
+			sandboxRunner = sandbox.NewDockerRunner(
+				cfg.Sandbox.TimeoutSec,
+				cfg.Sandbox.MaxMemoryMB,
+				cfg.Sandbox.BlockNetwork,
+				sandbox.ResourceLimits{
+					MaxNProc:     cfg.Sandbox.MaxNProc,
+					MaxOutputKB:  cfg.Sandbox.MaxOutputKB,
+					MaxFSWriteMB: cfg.Sandbox.MaxFSWriteMB,
+				},
+				cfg.Sandbox.DockerImage,
+			)
 		default: // "process"
 			sandboxRunner = sandbox.NewProcessRunnerWithLimits(
 				cfg.Sandbox.TimeoutSec,
@@ -104,7 +116,7 @@ func printReport(report *sec.Report, format string, showCode bool) {
 // write history are warnings, not command failures: analysis already ran and
 // was reported to the user, and a full audit DB must not block development.
 func saveAuditRecord(cfg *config.Config, report *sec.Report) {
-	db, err := database.Open(cfg.Output.AuditDB)
+	db, err := openAuditDB(cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "⚠ audit history unavailable: %v\n", err)
 		return
@@ -117,6 +129,53 @@ func saveAuditRecord(cfg *config.Config, report *sec.Report) {
 		RedactSecrets:      cfg.Audit.RedactSecrets,
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "⚠ failed to save audit record: %v\n", err)
+		return
+	}
+	exportAuditRecord(cfg, report)
+}
+
+// openAuditDB opens the local audit database with the configured retention and
+// encryption policy. When encryption is enabled but no usable key is present it
+// fails closed rather than silently writing plaintext reports.
+func openAuditDB(cfg *config.Config) (*database.SQLiteDB, error) {
+	opts := database.OpenOptions{
+		RetentionDays: cfg.Audit.RetentionDays,
+		MaxRecords:    cfg.Audit.MaxRecords,
+	}
+	if cfg.Audit.Encrypt {
+		envName := cfg.Audit.EncryptionKeyEnv
+		if envName == "" {
+			envName = "ELEVATED_CLI_AUDIT_KEY"
+		}
+		key := os.Getenv(envName)
+		if key == "" {
+			return nil, fmt.Errorf("audit encryption enabled but %s is not set", envName)
+		}
+		opts.EncryptionKey = database.KeyFromString(key)
+	}
+	return database.OpenWithOptions(cfg.Output.AuditDB, opts)
+}
+
+// exportAuditRecord ships a completed report to the configured centralized
+// audit endpoint. Like local persistence, export failures are warnings.
+func exportAuditRecord(cfg *config.Config, report *sec.Report) {
+	if !cfg.Audit.Export.Enabled || cfg.Audit.Export.Endpoint == "" {
+		return
+	}
+	token := ""
+	if cfg.Audit.Export.TokenEnv != "" {
+		token = os.Getenv(cfg.Audit.Export.TokenEnv)
+	}
+	payload, err := json.Marshal(report)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "⚠ audit export skipped: %v\n", err)
+		return
+	}
+	exporter := audit.New(cfg.Audit.Export.Endpoint, token)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := exporter.Export(ctx, payload); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠ audit export failed: %v\n", err)
 	}
 }
 
