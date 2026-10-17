@@ -92,14 +92,72 @@ type LoggerConfig struct {
 // PolicyConfig defines the security-policy rules enforced against generated code.
 // These rules are explicit and configurable; blocking rules are enforced before
 // any sandbox execution (see the pipeline).
+//
+// Version is the policy schema version. Version 1 is the only supported value;
+// an unknown version is rejected at load time so a newer schema is never
+// silently misinterpreted. Bundles lists additional policy files that are
+// merged on top of the inline rules; see internal/policy.
+//
+// DefaultAction is the action ("block" or "warn") applied to a rule that has no
+// explicit entry in RuleActions. RuleActions and RuleSeverities let an operator
+// set the action and severity per violation rule name (for example
+// BLOCKED_IMPORT, BLOCKED_FUNCTION, UNHANDLED_ERROR, HIGH_COMPLEXITY).
 type PolicyConfig struct {
-	File  string `mapstructure:"file"`
-	Rules struct {
+	Version        string            `mapstructure:"version"`
+	File           string            `mapstructure:"file"`
+	Bundles        []string          `mapstructure:"bundles"`
+	DefaultAction  string            `mapstructure:"default_action"`
+	RuleActions    map[string]string `mapstructure:"rule_actions"`
+	RuleSeverities map[string]string `mapstructure:"rule_severities"`
+	Rules          struct {
 		BlockedImports          []string `mapstructure:"blocked_imports"`
 		BlockedFunctions        []string `mapstructure:"blocked_functions"`
 		RequireErrorHandling    bool     `mapstructure:"require_error_handling"`
 		MaxCyclomaticComplexity int      `mapstructure:"max_cyclomatic_complexity"`
 	} `mapstructure:"rules"`
+}
+
+// SupportedPolicyVersion is the only policy schema version this build accepts.
+const SupportedPolicyVersion = "1"
+
+// AuditExportTarget describes an optional centralized audit destination. When
+// Enabled, every saved report is POSTed as JSON to Endpoint using a bearer
+// token read from the environment variable named by TokenEnv. It is off by
+// default because it moves audit data off the local machine.
+type AuditExportTarget struct {
+	Enabled  bool   `mapstructure:"enabled"`
+	Endpoint string `mapstructure:"endpoint"`
+	TokenEnv string `mapstructure:"token_env"`
+}
+
+// MetricsConfig controls operational metrics collected from the local audit
+// database and surfaced by the `metrics` command. No metrics are sent anywhere:
+// they are aggregated locally and printed on request.
+type MetricsConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Format  string `mapstructure:"format"` // prometheus | json
+}
+
+// PluginAnalyzer declares an external analyzer executed as a subprocess. The
+// analyzer receives the code on stdin and must emit a JSON array of findings on
+// stdout (the sec.Finding shape). Plugins run out-of-process and cannot block
+// the pipeline: an analyzer that fails is reported as an incomplete SAST stage.
+type PluginAnalyzer struct {
+	Name      string   `mapstructure:"name"`
+	Command   string   `mapstructure:"command"`
+	Args      []string `mapstructure:"args"`
+	Languages []string `mapstructure:"languages"`
+}
+
+// PluginsConfig lists external analyzer plugins.
+type PluginsConfig struct {
+	Analyzers []PluginAnalyzer `mapstructure:"analyzers"`
+}
+
+// SBOMConfig controls software bill-of-materials generation.
+type SBOMConfig struct {
+	Format string `mapstructure:"format"` // cyclonedx | spdx
+	Output string `mapstructure:"output"` // path or "-" for stdout
 }
 
 // AnalysisConfig controls which optional security scanners are run as part of

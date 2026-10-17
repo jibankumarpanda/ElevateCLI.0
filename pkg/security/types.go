@@ -104,13 +104,29 @@ type Vulnerability struct {
 
 // ─── Policy violation ────────────────────────────────────────────────────────
 
+// Policy action values. A rule's action decides whether a violation blocks
+// approval outright ("block") or is only advisory ("warn"). Blocking is the
+// default so an unconfigured rule fails safe.
+const (
+	PolicyActionBlock = "block"
+	PolicyActionWarn  = "warn"
+)
+
+// IsBlocking reports whether the action prevents an approving verdict.
+// An empty action is treated as blocking for backward compatibility.
+func (v PolicyViolation) IsBlocking() bool {
+	return v.Action != PolicyActionWarn
+}
+
 // PolicyViolation represents a rule broken by the generated code.
 type PolicyViolation struct {
-	Rule        string `json:"rule"`
-	Description string `json:"description"`
-	File        string `json:"file"`
-	Line        int    `json:"line"`
-	Value       string `json:"value"` // the blocked import/function found
+	Rule        string   `json:"rule"`
+	Description string   `json:"description"`
+	File        string   `json:"file"`
+	Line        int      `json:"line"`
+	Value       string   `json:"value"`    // the blocked import/function found
+	Severity    Severity `json:"severity"` // severity assigned by the policy
+	Action      string   `json:"action"`   // "block" | "warn"
 }
 
 // ─── Sandbox result ──────────────────────────────────────────────────────────
