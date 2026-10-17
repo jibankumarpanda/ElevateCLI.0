@@ -1,11 +1,11 @@
 package main
 
-// These variables are injected at build time via -ldflags.
-// Build with:
+// These variables are injected at build time via -ldflags. The defaults
+// describe an unversioned local build; release builds override them.
 //
-//	go build -ldflags="-X main.Version=1.0.0 -X main.Commit=$(git rev-parse --short HEAD) -X main.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" ./cmd/elevated-cli/
+//	go build -trimpath -ldflags="-X main.Version=0.1.1 -X main.Commit=$(git rev-parse --short HEAD) -X main.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" ./cmd/elevated-cli/
 var (
-	Version = "dev"
+	Version = "0.1.1"
 	Commit  = "none"
 	Date    = "unknown"
 )

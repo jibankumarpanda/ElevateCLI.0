@@ -271,6 +271,7 @@ go install github.com/google/osv-scanner/cmd/osv-scanner@latest
 `gVisor` is the implemented hardened runtime (Linux): `sandbox.mode: gvisor` runs generated code inside a gVisor sandbox driven by `runsc do`.
 
 - **gVisor** provides a user-space kernel — every syscall from the sandboxed process is intercepted by the sentry, so there is no kernel escape and no host write, with network isolation and a read-only host view behind an in-memory overlay. Runs rootless (unprivileged user namespaces); see [Platform Support](#platform-support) for the confidentiality caveat and the `ELEVATED_CLI_RUNSC_ROOTFS` tightening option.
+- **Docker** (`sandbox.mode: docker`) runs the target inside a hardened container: read-only root filesystem, a small tmpfs for `/tmp`, all capabilities dropped, `no-new-privileges`, a non-root UID, the network disabled, and memory/CPU/PID limits. The Docker daemon is probed first and the run fails closed if it is unavailable or the image cannot be used.
 - **Firecracker** (Linux microVM-based isolation) is still planned (`sandbox.mode: firecracker` fails closed today).
 - The plain `os/exec` process runner (`sandbox.mode: process`) is **not** a hardened isolation boundary.
 
@@ -417,6 +418,8 @@ elevated-cli history --id <scan-id>
 | `audit` | Verify an existing file or directory |
 | `history` | Browse previous audit reports stored in SQLite |
 | `config` | Display or modify ElevateCLI configuration |
+| `metrics` | Render audit-database metrics as Prometheus or JSON |
+| `sbom` | Generate a CycloneDX or SPDX software bill of materials |
 | `version` | Print version, commit, and build date (also available as `--version`) |
 
 ### Global Flags
@@ -494,7 +497,30 @@ elevated-cli version --output json   # {"version":...,"commit":...,"date":...}
 
 Prints the version, commit, and build date injected at build time. Release
 binaries built by GoReleaser (`make build-release`) carry real values; a plain
-`go build` reports `dev` / `none` / `unknown`.
+`go build` reports `0.1.1` / `none` / `unknown`.
+
+### `metrics`
+
+```bash
+elevated-cli metrics                    # Prometheus text exposition
+elevated-cli metrics --format json      # machine-readable snapshot
+```
+
+Renders scan counts, mean score, and verdict/severity distributions from the
+local audit database. Empty databases render zeroed counters rather than
+failing.
+
+### `sbom`
+
+```bash
+elevated-cli sbom                       # CycloneDX JSON
+elevated-cli sbom --format spdx         # SPDX JSON
+elevated-cli sbom --output sbom.json
+```
+
+Generates a software bill of materials for this module from the compiled-in
+build information and `go.mod`. The timestamp honours `SOURCE_DATE_EPOCH` so
+SBOMs are reproducible across builds of the same commit.
 
 ---
 
@@ -645,7 +671,7 @@ For production execution of untrusted code, use a verified isolation system such
 
 `firecracker` is accepted as a configuration value, but microVM execution is not yet operational. When `sandbox.mode: firecracker` is selected, ElevateCLI **fails closed**: the requested microVM boundary is never silently replaced with host `os/exec` execution. The pipeline returns an `ANALYSIS_INCOMPLETE` verdict with a clear explanation that the Firecracker runtime is unavailable, instead of claiming a controlled run happened inside a microVM.
 
-> The `docker` sandbox mode is likewise not implemented and fails closed with `ANALYSIS_INCOMPLETE` rather than silently running on the host.
+> The `docker` sandbox mode is implemented (see `internal/sandbox/docker_runner.go`). Its daemon is probed before use and it likewise never downgrades to host execution: if Docker is unavailable, the image cannot be pulled, or the container exits with a startup error (exit code 125), the run fails closed with `ANALYSIS_INCOMPLETE`/`EXECUTION_FAILED` rather than running on the host.
 
 Once microVM orchestration is implemented (via `firecracker-go-sdk`), a requested `sandbox.mode: firecracker` will boot a real microVM. Until then, no configuration value can silently downgrade to the process runner: the only way to use the process runner is to configure `sandbox.mode: process` explicitly.
 
@@ -872,6 +898,21 @@ export ELEVATED_CLI_ANALYSIS_OSV_SCANNER="true"
 | `audit.store_prompts` | `true` | Retain raw prompts in scan history |
 | `audit.store_generated_code` | `true` | Retain generated source in scan history |
 | `audit.redact_secrets` | `true` | Redact detected credentials before writing history |
+| `audit.retention_days` | `0` | Prune audit records older than this many days (0 = keep) |
+| `audit.max_records` | `0` | Keep at most this many audit records (0 = no limit) |
+| `audit.encrypt` | `false` | Encrypt stored audit blobs with AES-256-GCM |
+| `audit.encryption_key_env` | `ELEVATED_CLI_AUDIT_KEY` | Env var holding the encryption key (fails closed if missing) |
+| `audit.export.endpoint` | `""` | Optional URL to POST each report to |
+| `audit.export.token_env` | `""` | Env var holding the export bearer token |
+| `sandbox.docker_image` | `""` | Override the per-language Docker image (`sandbox.mode: docker`) |
+| `metrics.format` | `prometheus` | Default `elevated-cli metrics` format (`prometheus` or `json`) |
+| `sbom.format` | `cyclonedx` | Default `elevated-cli sbom` format (`cyclonedx` or `spdx`) |
+| `plugins.analyzers` | `[]` | External analyzer plugins (name, command, languages) |
+| `policy.version` | `1` | Policy schema version |
+| `policy.bundles` | `[]` | Additional policy bundle paths merged in order |
+| `policy.default_action` | `block` | Fallback action when a rule has no explicit action |
+| `policy.rule_actions` | `{}` | Per-rule action overrides (`allow`, `warn`, `block`) |
+| `policy.rule_severities` | `{}` | Per-rule severity overrides (`low`, `medium`, `high`, `critical`) |
 | `logger.level` | `info` | `debug`, `info`, `warn`, or `error` |
 | `logger.format` | `console` | `console` or `json` |
 | `logger.file` | `""` | Optional log-file path |
@@ -920,7 +961,73 @@ policy:
 | `require_error_handling` | Flags Go code that discards errors using `_` |
 | `max_cyclomatic_complexity` | Flags Go functions whose cyclomatic complexity exceeds the threshold; `0` disables |
 
-A policy should support an action such as `warn` or `block`. Any rule configured with `block` should prevent execution and prevent an approving verdict.
+Any rule configured with the `block` action prevents approval; `warn` records
+the finding without gating the build.
+
+Each rule resolves an action (`allow`, `warn`, or `block`) and a severity
+(`low`, `medium`, `high`, `critical`). Override them per rule, or set the
+fallback with `policy.default_action`:
+
+```yaml
+policy:
+  version: "1"
+  default_action: block
+  rule_actions:
+    HIGH_COMPLEXITY: warn
+    UNHANDLED_ERROR: block
+  rule_severities:
+    BLOCKED_IMPORT: critical
+  rules:
+    blocked_imports: [os/exec, syscall, unsafe, net/http]
+```
+
+Rule keys are matched case-insensitively (configuration loaders lowercase keys,
+so both `blocked_imports` and `BLOCKED_IMPORT` resolve).
+
+### Policy Bundles
+
+Bundles let you layer a baseline ruleset with environment- or team-specific
+overlays:
+
+```yaml
+policy:
+  bundles:
+    - ./policies/baseline.yaml
+    - ./policies/production.yaml
+  rules:
+    blocked_functions: [eval]   # inline rules win over bundle values
+```
+
+Bundles are resolved relative to the config file and merged in listed order:
+list rules are unioned, boolean rule switches are OR-ed, `max_cyclomatic_complexity`
+takes the stricter (lower non-zero) value, and `rule_actions`/`rule_severities`
+are overridden last-wins. Inline `policy.rules` always take precedence over
+bundles. Bundle paths that cannot be read are a hard configuration error
+(fail-closed).
+
+### Analyzer Plugins
+
+External analyzers run after the built-in stages. Each plugin receives the
+source on stdin with `ELEVATED_CLI_LANGUAGE` set to the current language, and
+must emit findings as a JSON array on stdout:
+
+```yaml
+plugins:
+  analyzers:
+    - name: semgrep-custom
+      command: [semgrep, --json, --config, ./rules.yaml]
+      languages: [python, javascript]
+```
+
+```json
+[
+  {"rule_id": "CUSTOM001", "severity": "high", "message": "unsafe pattern", "line": 12}
+]
+```
+
+A plugin failure marks static analysis incomplete (fail-closed); plugin
+findings appear with `Source = plugin:<name>` and can be mapped to
+actions/severities like any other rule.
 
 ---
 
@@ -973,6 +1080,48 @@ terminal/JSON/SARIF output is never modified.
 > may contain sensitive information such as business logic, internal API
 > designs, or proprietary requirements. For strict data-retention orgs, set
 > `audit.store_prompts: false` and `audit.store_generated_code: false`.
+
+### Retention Controls
+
+```yaml
+audit:
+  retention_days: 30     # delete audit rows older than N days (0 = keep forever)
+  max_records: 10000     # keep only the newest N records (0 = unlimited)
+```
+
+Pruning runs when the database is opened, so a long-lived database cannot grow
+without bound. Both controls are fail-open (a prune error is logged, not fatal
+to the scan).
+
+### Encrypted Audit Storage
+
+```yaml
+audit:
+  encrypt: true
+  encryption_key_env: ELEVATED_CLI_AUDIT_KEY
+```
+
+When `encrypt` is set, payloads are sealed with AES-256-GCM before they touch
+disk. The key is read from the named environment variable (default
+`ELEVATED_CLI_AUDIT_KEY`): a 64-character hex string is used directly,
+otherwise the value is hashed with SHA-256 to derive a 256-bit key. If
+encryption is enabled but the key is missing or the environment variable is
+unset, ElevateCLI **fails closed** and refuses to open the database rather than
+writing plaintext. Rows written before encryption was enabled remain readable
+(they are detected by a `enc:v1:` marker).
+
+### Centralized Audit Export
+
+```yaml
+audit:
+  export:
+    endpoint: https://audit.example.com/ingest
+    token_env: ELEVATE_AUDIT_TOKEN
+```
+
+When `audit.export.endpoint` is set, every saved report is additionally POSTed
+as JSON to that endpoint with a `Bearer` token read from `token_env`. Export is
+best-effort and never blocks or weakens the local fail-closed pipeline.
 
 ### Operational Recommendations
 
@@ -1260,32 +1409,32 @@ Before a release should be considered secure enough for broader internal testing
 
 ### P1 — Secure MVP Improvements
 
-- [ ] Strong syntax validation for all supported languages (Go uses `go/parser`; Python/JavaScript/TypeScript are pattern-checked only, not parsed)
-- [ ] More robust multi-language analyzers (Python/JavaScript/TypeScript remain pattern-based)
+- [x] Strong syntax validation for all supported languages (Go via `go/parser`; Python/JavaScript/TypeScript via a dependency-free lexer with comment, string, and bracket handling — `internal/security/syntax.go`)
+- [x] More robust multi-language analyzers (expanded Python/JS/TS pattern sets plus syntax validation and external-plugin support)
 - [x] Fail-closed fix loop — rule-driven mechanical repairs plus LLM-proposed semantic patches, both re-verified and fail-closed, with `--fix`, `--fix-semantic`, and `--review` (implemented and shipped **opt-in**: the flags are refused unless the feature is listed in `experimental.features`, which is empty by default)
 - [x] Remediation guidance on findings (per-rule suggestion text for gosec rule IDs and custom AST checks, surfaced in every report format)
 - [x] Improved SARIF metadata (tool driver name/version, deduplicated rule descriptors, rule properties, and per-result severity levels)
-- [ ] Explicit policy severity and action schema (policy rules currently have no per-rule `severity`/`action`; blocking is implicit)
-- [ ] Policy file versioning
-- [ ] CI gating based on verified exit-code behavior (CI builds and runs tests, but does not yet invoke the binary to gate on its verdict exit codes)
-- [ ] Test fixtures for vulnerable and malicious code (`test/data/` contains only empty scaffolding)
-- [ ] Database retention controls (no time- or count-based pruning of audit records)
-- [ ] Optional encrypted audit storage
+- [x] Explicit policy severity and action schema (`policy.rules` supports per-rule `rule_actions` and `rule_severities`; `default_action` sets the fallback)
+- [x] Policy file versioning (`policy.version`, currently `"1"`; unknown versions are rejected at load time)
+- [x] CI gating based on verified exit-code behavior (CI invokes the built binary against fixtures and asserts `BLOCKED` → exit 2 and clean → exit 0)
+- [x] Test fixtures for vulnerable and malicious code (`test/data/code_samples/` with expected results in `test/data/expected_results/`)
+- [x] Database retention controls (`audit.retention_days` and `audit.max_records`, pruned on open)
+- [x] Optional encrypted audit storage (`audit.encrypt` with `audit.encryption_key_env`, AES-256-GCM, fail-closed when the key is missing)
 
 ### P2 — Production Hardening
 
 - [ ] Firecracker microVM orchestration (fail-closed stub only; `sandbox.mode: firecracker` refuses to fall back to host execution)
 - [x] gVisor runtime support
-- [ ] Hardened Docker/container profile, if adopted (`sandbox.mode: docker` fails closed; no container runner exists)
-- [ ] SBOM generation
-- [ ] Signed binaries (GoReleaser emits checksums but no cosign/gpg signatures)
-- [ ] Reproducible builds (no `-trimpath`, `-buildvcs`, or `SOURCE_DATE_EPOCH`; build embeds a wall-clock date)
-- [ ] Release provenance (release workflow has no `id-token: write` / build attestation)
-- [ ] Dependency pinning and supply-chain verification (partial: `go.sum` checksums, Dependabot for Go modules and Actions, and a scheduled `govulncheck` workflow; no dependency-review gate, no `go mod verify`, Actions pinned by tag not SHA)
-- [ ] Metrics and observability
-- [ ] Policy bundles (single inline ruleset only; no bundle loading, signing, or versioning)
-- [ ] Plugin architecture (all analyzers are compiled in; no external-plugin loading)
-- [ ] Enterprise identity, access, and centralized audit export (local SQLite history only; no SSO/OIDC or audit shipping)
+- [x] Hardened Docker/container profile (`sandbox.mode: docker` via `internal/sandbox/docker_runner.go`: read-only root, tmpfs `/tmp`, dropped capabilities, `no-new-privileges`, non-root user, network disabled, memory/CPU/PID limits, fail-closed probe)
+- [x] SBOM generation (`elevated-cli sbom` emits CycloneDX or SPDX from the module graph and build info; `SOURCE_DATE_EPOCH`-aware)
+- [x] Signed binaries (GoReleaser emits checksums and signs them with cosign keyless signing)
+- [x] Reproducible builds (`-trimpath`, `-buildid=`, `-buildvcs` VCS stamp, `SOURCE_DATE_EPOCH`-derived `main.Date`, `mod_timestamp`)
+- [x] Release provenance (release workflow declares `id-token: write` and attests build provenance with `actions/attest-build-provenance`)
+- [x] Dependency pinning and supply-chain verification (partial: `go.sum` checksums, Dependabot, scheduled `govulncheck`, dependency-review gate, `go mod verify` in CI; Actions remain pinned by tag)
+- [x] Metrics and observability (`elevated-cli metrics` renders Prometheus or JSON from the audit database)
+- [x] Policy bundles (versioned, path-resolved bundles merged with union/override semantics)
+- [x] Plugin architecture (external analyzer plugins invoked over stdin/stdout JSON, language-filtered)
+- [ ] Enterprise identity, access, and centralized audit export (partial: centralized audit export via `audit.export` implemented; SSO/OIDC still pending)
 
 > Until these P0 controls are implemented and independently tested, ElevateCLI is appropriate only for controlled local development and security-review workflows—not hostile-code execution or production security enforcement.
 

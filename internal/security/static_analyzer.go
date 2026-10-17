@@ -297,27 +297,30 @@ func looksLikeSecret(s string) bool {
 }
 
 func checkDangerousCall(call string, line int) *sec.Finding {
-	dangerous := map[string]string{
-		"exec.Command":    "Direct command execution detected. Use a sandboxed approach instead.",
-		"os.Remove":       "File deletion detected. Ensure path is validated and deletion is intentional.",
-		"os.RemoveAll":    "Recursive file deletion detected. Highly dangerous if path is user-controlled.",
-		"net.Dial":        "Direct network connection detected. Ensure destination is validated.",
-		"http.Get":        "Outbound HTTP request detected. Validate and whitelist target URLs.",
-		"ioutil.ReadFile": "File read detected. Validate the file path to prevent directory traversal.",
-		"fmt.Sprintf":     "", // not dangerous on its own — skip
+	type dangerousCall struct {
+		msg      string
+		severity sec.Severity
 	}
-	msg, exists := dangerous[call]
-	if !exists || msg == "" {
+	dangerous := map[string]dangerousCall{
+		"exec.Command":    {"Direct command execution detected. Use a sandboxed approach instead.", sec.SeverityHigh},
+		"os.Remove":       {"File deletion detected. Ensure path is validated and deletion is intentional.", sec.SeverityMedium},
+		"os.RemoveAll":    {"Recursive file deletion detected. Highly dangerous if path is user-controlled.", sec.SeverityHigh},
+		"net.Dial":        {"Direct network connection detected. Ensure destination is validated.", sec.SeverityHigh},
+		"http.Get":        {"Outbound HTTP request detected. Validate and whitelist target URLs.", sec.SeverityHigh},
+		"ioutil.ReadFile": {"File read detected. Validate the file path to prevent directory traversal.", sec.SeverityMedium},
+	}
+	d, exists := dangerous[call]
+	if !exists || d.msg == "" {
 		return nil
 	}
 	return &sec.Finding{
 		ID:          fmt.Sprintf("ast-%s", strings.ReplaceAll(call, ".", "-")),
 		RuleID:      "DANGEROUS_CALL",
 		Title:       fmt.Sprintf("Dangerous function call: %s", call),
-		Severity:    sec.SeverityMedium,
+		Severity:    d.severity,
 		Source:      "custom-ast",
-		Description: msg,
-		Suggestion:  msg,
+		Description: d.msg,
+		Suggestion:  d.msg,
 		Line:        line,
 	}
 }
@@ -337,15 +340,21 @@ var pythonPatterns = []pattern{
 	{"os.system(", "os.system() call detected", sec.SeverityHigh, "Use subprocess.run() with shell=False instead."},
 	{"pickle.loads", "Insecure deserialization with pickle", sec.SeverityHigh, "Never unpickle untrusted data. Use JSON instead."},
 	{"subprocess.call(", "subprocess.call() detected", sec.SeverityMedium, "Prefer subprocess.run() and avoid shell=True."},
+	{"subprocess.Popen(", "subprocess.Popen() detected", sec.SeverityMedium, "Avoid spawning processes; validate all input."},
 	{"shell=True", "Shell injection risk", sec.SeverityHigh, "Never use shell=True with user-controlled input."},
+	{"socket.socket(", "Raw socket usage detected", sec.SeverityMedium, "Avoid raw sockets in generated code; they enable exfiltration."},
+	{"__import__(", "Dynamic import detected", sec.SeverityMedium, "Avoid dynamic imports; they can load attacker-controlled modules."},
 	{"password", "Possible password in code", sec.SeverityMedium, "Do not hardcode passwords. Use environment variables."},
 }
 
 var jsPatterns = []pattern{
 	{"eval(", "Use of eval() detected", sec.SeverityCritical, "Never use eval() — it executes arbitrary code."},
+	{"new Function(", "Dynamic code execution detected", sec.SeverityHigh, "Avoid constructing functions from strings."},
 	{"innerHTML", "XSS risk via innerHTML", sec.SeverityHigh, "Use textContent or DOMPurify to sanitise HTML."},
 	{"document.write(", "Dangerous document.write() call", sec.SeverityHigh, "Avoid document.write() — it can overwrite the entire page."},
 	{"dangerouslySetInnerHTML", "XSS risk via dangerouslySetInnerHTML", sec.SeverityHigh, "Sanitise all HTML before using dangerouslySetInnerHTML."},
+	{"child_process", "Node child_process usage detected", sec.SeverityHigh, "Avoid spawning child processes from generated code."},
+	{"http.request(", "Outbound HTTP request detected", sec.SeverityMedium, "Review outbound requests for data exfiltration."},
 	{"process.env", "Environment variable access detected", sec.SeverityInfo, "Ensure env vars are not exposed to the client."},
 }
 

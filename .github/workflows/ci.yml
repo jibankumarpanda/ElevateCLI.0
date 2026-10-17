@@ -1,4 +1,5 @@
-# Main CI pipeline: build, vet, test (with race detector), coverage.
+# Main CI pipeline: build, vet, test (with race detector), coverage, and
+# exit-code gating.
 name: CI
 
 on:
@@ -31,6 +32,9 @@ jobs:
       - name: Check go.mod is tidy
         run: go mod tidy -diff
 
+      - name: Verify module downloads
+        run: go mod verify
+
       - name: Build binary
         run: go build -o /tmp/elevated-cli ./cmd/elevated-cli
 
@@ -42,3 +46,21 @@ jobs:
 
       - name: Test coverage
         run: go test ./... -coverprofile=/tmp/coverage.out
+
+      - name: Gate on BLOCKED verdict exit code
+        run: |
+          set +e
+          /tmp/elevated-cli audit --file test/data/code_samples/vulnerable/python_cmd_injection.py --no-sandbox >/dev/null 2>&1
+          code=$?
+          set -e
+          if [ "$code" -ne 2 ]; then
+            echo "::error::expected exit 2 (BLOCKED) for vulnerable fixture, got $code"
+            exit 1
+          fi
+
+      - name: Gate on clean verdict exit code
+        run: |
+          if ! /tmp/elevated-cli audit --file test/data/code_samples/safe/python_clean.py --no-sandbox >/dev/null 2>&1; then
+            echo "::error::expected exit 0 for safe fixture"
+            exit 1
+          fi

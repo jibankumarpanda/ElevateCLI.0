@@ -1,0 +1,16 @@
+version: "1"
+default_action: block
+rule_actions:
+  HIGH_COMPLEXITY: warn
+rule_severities:
+  BLOCKED_IMPORT: critical
+  BLOCKED_FUNCTION: high
+rules:
+  blocked_imports:
+    - os/exec
+    - unsafe
+  blocked_functions:
+    - exec
+    - syscall
+  require_error_handling: true
+  max_cyclomatic_complexity: 15

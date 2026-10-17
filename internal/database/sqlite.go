@@ -298,7 +298,8 @@ func (s *SQLiteDB) ListByDate(ctx context.Context, date string) ([]ScanSummary, 
 	return scanSummaries(rows)
 }
 
-func scanSummaries(rows *sql.Rows) ([]ScanSummary, error) {	var out []ScanSummary
+func scanSummaries(rows *sql.Rows) ([]ScanSummary, error) {
+	var out []ScanSummary
 	for rows.Next() {
 		var (
 			s       ScanSummary

@@ -1,17 +1,25 @@
 APP_NAME=elevated-cli
 BINARY=./$(APP_NAME)
 CMD_PATH=./cmd/elevated-cli/
-BUILD_LDFLAGS=-s -w -X main.Version=1.0.0 -X main.Commit=$(shell git rev-parse --short HEAD 2>/dev/null || echo none) -X main.Date=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
-.PHONY: build run test lint clean install fmt vet cross
+# Release metadata. VERSION defaults to 0.1.1; SOURCE_DATE_EPOCH defaults to the
+# timestamp of HEAD so builds are reproducible, and the build date is derived
+# from it rather than the wall clock.
+VERSION ?= 0.1.1
+COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
+SOURCE_DATE_EPOCH ?= $(shell git log -1 --format=%ct 2>/dev/null || echo 0)
+BUILD_DATE ?= $(shell date -u -d @$(SOURCE_DATE_EPOCH) +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
+BUILD_LDFLAGS=-s -w -X main.Version=$(VERSION) -X main.Commit=$(COMMIT) -X main.Date=$(BUILD_DATE) -buildid=
 
-# Build single binary
+.PHONY: build run test lint clean install fmt vet cross build-release
+
+# Build single binary (reproducible: -trimpath strips host paths)
 build:
-	go build -o $(APP_NAME) $(CMD_PATH)
+	go build -trimpath -o $(APP_NAME) $(CMD_PATH)
 
-# Build with version info
+# Build with version info (reproducible)
 build-release:
-	go build -ldflags="$(BUILD_LDFLAGS)" -o $(APP_NAME) $(CMD_PATH)
+	SOURCE_DATE_EPOCH=$(SOURCE_DATE_EPOCH) go build -trimpath -ldflags="$(BUILD_LDFLAGS)" -o $(APP_NAME) $(CMD_PATH)
 
 # Run directly without building
 run:
@@ -41,6 +49,14 @@ gosec:
 vulncheck:
 	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
+# Generate an SBOM for the built module
+sbom:
+	go run $(CMD_PATH) sbom --format cyclonedx --output - > sbom.cyclonedx.json
+
+# Verify module checksums
+verify:
+	go mod verify
+
 # Format code
 fmt:
 	gofmt -w .
@@ -55,21 +71,18 @@ install:
 
 # Cross-compile for Linux (from macOS)
 cross-linux:
-	GOOS=linux GOARCH=amd64 go build -o $(APP_NAME)-linux $(CMD_PATH)
+	GOOS=linux GOARCH=amd64 go build -trimpath -o $(APP_NAME)-linux $(CMD_PATH)
 
 # Cross-compile for Windows
 cross-windows:
-	GOOS=windows GOARCH=amd64 go build -o $(APP_NAME).exe $(CMD_PATH)
+	GOOS=windows GOARCH=amd64 go build -trimpath -o $(APP_NAME)-windows.exe $(CMD_PATH)
 
-# Cross-compile for macOS ARM (M1/M2)
-cross-mac-arm:
-	GOOS=darwin GOARCH=arm64 go build -o $(APP_NAME)-mac-arm $(CMD_PATH)
+# Cross-compile for macOS
+cross-darwin:
+	GOOS=darwin GOARCH=arm64 go build -trimpath -o $(APP_NAME)-darwin $(CMD_PATH)
 
-# Clean build artifacts
+cross: cross-linux cross-windows cross-darwin
+
+# Remove build artifacts
 clean:
-	rm -f $(APP_NAME) $(APP_NAME)-linux $(APP_NAME).exe $(APP_NAME)-mac-arm
-	rm -f coverage.out
-
-# Full check: fmt + vet + lint + test + gosec
-all-checks: fmt vet lint test gosec vulncheck
-	@echo "All checks passed."
+	rm -f $(APP_NAME) $(APP_NAME)-linux $(APP_NAME)-windows.exe $(APP_NAME)-darwin coverage.out sbom.cyclonedx.json

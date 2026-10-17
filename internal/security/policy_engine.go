@@ -39,8 +39,11 @@ var defaultRuleSeverity = map[string]sec.Severity{
 // actionFor resolves the configured action for a violation rule. An explicit
 // policy.rule_actions entry wins; otherwise policy.default_action applies; an
 // empty default falls back to "block" so an unconfigured rule fails safe.
+//
+// Lookup is case-insensitive because configuration loaders (Viper) lowercase
+// map keys, while rule IDs are conventionally upper-case.
 func (e *PolicyEngineImpl) actionFor(rule string) string {
-	if a, ok := e.cfg.RuleActions[rule]; ok {
+	if a, ok := lookupFold(e.cfg.RuleActions, rule); ok {
 		if a = strings.ToLower(strings.TrimSpace(a)); a == "warn" || a == "block" {
 			return a
 		}
@@ -54,7 +57,7 @@ func (e *PolicyEngineImpl) actionFor(rule string) string {
 // severityFor resolves the configured severity for a violation rule, falling
 // back to the rule's built-in default and then to MEDIUM.
 func (e *PolicyEngineImpl) severityFor(rule string) sec.Severity {
-	if s, ok := e.cfg.RuleSeverities[rule]; ok {
+	if s, ok := lookupFold(e.cfg.RuleSeverities, rule); ok {
 		if sev := parseSeverity(s); sev != "" {
 			return sev
 		}
@@ -63,6 +66,19 @@ func (e *PolicyEngineImpl) severityFor(rule string) sec.Severity {
 		return sev
 	}
 	return sec.SeverityMedium
+}
+
+// lookupFold returns the value for key, matching keys case-insensitively.
+func lookupFold(m map[string]string, key string) (string, bool) {
+	if v, ok := m[key]; ok {
+		return v, true
+	}
+	for k, v := range m {
+		if strings.EqualFold(k, key) {
+			return v, true
+		}
+	}
+	return "", false
 }
 
 // violation constructs a PolicyViolation with the resolved action and severity.

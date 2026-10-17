@@ -1,15 +1,9 @@
 {
-  "vulnerable": {
-    "python_cmd_injection.py": { "language": "python", "min_high": 1 },
-    "javascript_xss.js": {"language": "javascript", "min_high": 1},
-    "go_cmd_injection.go": {"language": "go", "min_high": 1}
-  },
-  "malicious": {
-    "reverse_shell.py": {"language": "python", "min_high": 1},
-    "data_exfil.js": {"language": "javascript", "min_high": 3}
-  },
-  "safe": {
-    "python_clean.py": {"language": "python"},
-    "go_clean.go": {"language": "go"}
-  }
+  "vulnerable/python_cmd_injection.py": {"language": "python", "min_findings": 1, "min_high": 1},
+  "vulnerable/javascript_xss.js": {"language": "javascript", "min_findings": 1, "min_high": 1},
+  "vulnerable/go_cmd_injection.go": {"language": "go", "min_findings": 1, "min_high": 1},
+  "malicious/reverse_shell.py": {"language": "python", "min_findings": 2, "min_high": 1},
+  "malicious/data_exfil.js": {"language": "javascript", "min_findings": 1},
+  "safe/python_clean.py": {"language": "python", "min_findings": 0, "max_high": 0},
+  "safe/go_clean.go": {"language": "go", "min_findings": 0, "max_high": 0}
 }

@@ -1,4 +1,11 @@
-# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# GoReleaser configuration for ElevateCLI.
+#
+# Builds are reproducible: -trimpath strips absolute paths, the VCS stamp is
+# embedded, main.Date is driven by the commit timestamp (SOURCE_DATE_EPOCH)
+# rather than the wall clock, and archive mtimes come from the commit. Release
+# artifacts include an SBOM per archive, checksums, and cosign keyless
+# signatures over the checksums file. The release workflow adds GitHub build
+# provenance attestation on top.
 version: 2
 
 project_name: elevated-cli
@@ -6,6 +13,7 @@ project_name: elevated-cli
 before:
   hooks:
     - go mod tidy
+    - go mod verify
 
 builds:
   - id: elevated-cli
@@ -13,6 +21,15 @@ builds:
     binary: elevated-cli
     env:
       - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.Version={{ .Version }}
+      - -X main.Commit={{ .FullCommit }}
+      - -X main.Date={{ .CommitDate }}
+      - -buildid=
+    mod_timestamp: "{{ .CommitTimestamp }}"
     goos:
       - linux
       - darwin
@@ -20,23 +37,39 @@ builds:
     goarch:
       - amd64
       - arm64
-    ignore:
-      - goos: windows
-        goarch: arm64
-    ldflags:
-      - -s -w -X main.Version={{ .Version }} -X main.Commit={{ .ShortCommit }} -X main.Date={{ .Date }}
 
 archives:
-  - name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: default
+    formats:
+      - tar.gz
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
+    files:
+      - README.md
+      - LICENSE*
+
+sboms:
+  - id: cyclonedx
+    artifacts: archive
 
 checksum:
-  name_template: checksums.txt
+  name_template: "checksums.txt"
 
-snapshot:
-  name_template: "{{ incpatch .Version }}-next"
+signs:
+  - id: cosign
+    cmd: cosign
+    artifacts: checksum
+    output: true
+    certificate: "${artifact}.pem"
+    signature: "${artifact}.sig"
+    args:
+      - sign-blob
+      - "--yes"
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
 
 changelog:
   sort: asc

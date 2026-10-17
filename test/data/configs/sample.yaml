@@ -1,0 +1,52 @@
+# Example ElevateCLI configuration demonstrating the P1/P2 controls.
+# Copy to .elevated-cli.yaml in your project or home directory.
+
+ai:
+  provider: openai
+  model: gpt-4o
+  timeout_sec: 120
+
+sandbox:
+  mode: process
+  timeout_sec: 10
+  max_memory_mb: 256
+  block_network: true
+  max_output_kb: 1024
+  max_fs_write_mb: 10
+  docker_image: python:3.12-alpine
+
+audit:
+  store_prompts: true
+  store_generated_code: true
+  redact_secrets: true
+  retention_days: 90
+  max_records: 10000
+  encrypt: false
+  encryption_key_env: ELEVATED_CLI_AUDIT_KEY
+  export:
+    enabled: false
+    endpoint: https://audit.example/collect
+    token_env: ELEVATED_CLI_AUDIT_TOKEN
+
+policy:
+  version: "1"
+  default_action: block
+  bundles:
+    - ../policies/block_exec.yaml
+  rule_severities:
+    HIGH_COMPLEXITY: low
+  rules:
+    blocked_imports:
+      - unsafe
+    blocked_functions:
+      - exec
+    require_error_handling: true
+    max_cyclomatic_complexity: 20
+
+metrics:
+  enabled: true
+  format: prometheus
+
+sbom:
+  format: cyclonedx
+  output: "-"
