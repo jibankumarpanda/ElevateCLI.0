@@ -391,6 +391,14 @@ func Load(cfgFile string) (*Config, error) {
 		cfg.Database.Path = filepath.Join(".", cfg.Database.Path)
 	}
 
+	// Merge any referenced policy bundles into the effective policy before
+	// validation, so invalid bundle actions/versions are rejected too.
+	if used := v.ConfigFileUsed(); used != "" {
+		if err := loadPolicyBundles(&cfg, filepath.Dir(used)); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}

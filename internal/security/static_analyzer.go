@@ -18,17 +18,27 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/jibankumarpanda/ElevateCLI.0/internal/config"
 	"github.com/jibankumarpanda/ElevateCLI.0/internal/logger"
 	sec "github.com/jibankumarpanda/ElevateCLI.0/pkg/security"
 	"go.uber.org/zap"
 )
 
 // StaticAnalyzerImpl implements the StaticAnalyzer interface.
-type StaticAnalyzerImpl struct{}
+type StaticAnalyzerImpl struct {
+	plugins []config.PluginAnalyzer
+}
 
-// NewStaticAnalyzer returns a ready-to-use StaticAnalyzerImpl.
+// NewStaticAnalyzer returns a ready-to-use StaticAnalyzerImpl without external
+// analyzer plugins.
 func NewStaticAnalyzer() *StaticAnalyzerImpl {
 	return &StaticAnalyzerImpl{}
+}
+
+// NewStaticAnalyzerWithPlugins returns a StaticAnalyzerImpl that also runs the
+// configured out-of-process analyzer plugins.
+func NewStaticAnalyzerWithPlugins(plugins []config.PluginAnalyzer) *StaticAnalyzerImpl {
+	return &StaticAnalyzerImpl{plugins: plugins}
 }
 
 // Analyze runs SAST on the generated code.
@@ -74,6 +84,15 @@ func (a *StaticAnalyzerImpl) Analyze(ctx context.Context, code, language string)
 	default:
 		findings = append(findings, runPatternCheck(code, "generic")...)
 	}
+
+	// External analyzer plugins are a mandatory stage: a failure propagates as
+	// an incomplete SAST result.
+	pluginFindings, pluginErr := runPlugins(ctx, a.plugins, code, language)
+	if pluginErr != nil {
+		log.Warn("plugin analysis incomplete", zap.Error(pluginErr))
+		return append(findings, pluginFindings...), pluginErr
+	}
+	findings = append(findings, pluginFindings...)
 
 	log.Info("static analysis complete", zap.Int("findings", len(findings)))
 	return findings, nil

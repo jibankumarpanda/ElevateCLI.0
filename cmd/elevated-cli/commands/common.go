@@ -24,7 +24,7 @@ import (
 // dependency stage; pass "" when only raw code is available (generate).
 func buildPipeline(cfg config.Config, runSandbox bool, srcDir string) (*security.Pipeline, error) {
 	// Stage 1: Static analyzer
-	staticAnalyzer := security.NewStaticAnalyzer()
+	staticAnalyzer := security.NewStaticAnalyzerWithPlugins(cfg.Plugins.Analyzers)
 
 	// Stage 2: Dependency auditor (CVE scan via govulncheck/osv-scanner)
 	depAuditor := security.NewDependencyAuditor(cfg.Analysis)

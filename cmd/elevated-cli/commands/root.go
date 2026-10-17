@@ -86,6 +86,7 @@ func init() {
 		newHistoryCmd(),
 		newConfigCmd(),
 		newMetricsCmd(),
+		newSBOMCmd(),
 		newVersionCmd(),
 	)
 }
