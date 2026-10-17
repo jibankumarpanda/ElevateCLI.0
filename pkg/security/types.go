@@ -113,9 +113,10 @@ const (
 )
 
 // IsBlocking reports whether the action prevents an approving verdict.
-// An empty action is treated as blocking for backward compatibility.
+// Only an explicit "block" action blocks; an empty or unknown action is
+// advisory so that legacy reports and synthetic fixtures behave as before.
 func (v PolicyViolation) IsBlocking() bool {
-	return v.Action != PolicyActionWarn
+	return v.Action == PolicyActionBlock
 }
 
 // PolicyViolation represents a rule broken by the generated code.

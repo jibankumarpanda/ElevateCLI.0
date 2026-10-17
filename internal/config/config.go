@@ -20,6 +20,9 @@ type Config struct {
 	Scoring      ScoringConfig      `mapstructure:"scoring"`
 	Analysis     AnalysisConfig     `mapstructure:"analysis"`
 	Experimental ExperimentalConfig `mapstructure:"experimental"`
+	Metrics      MetricsConfig      `mapstructure:"metrics"`
+	Plugins      PluginsConfig      `mapstructure:"plugins"`
+	SBOM         SBOMConfig         `mapstructure:"sbom"`
 }
 
 // AIConfig configures the LLM provider used for code generation.
@@ -61,6 +64,11 @@ type SandboxConfig struct {
 	// MaxFSWriteMB caps the size a single file may reach via RLIMIT_FSIZE
 	// (prlimit --fsize). 0 = no cap.
 	MaxFSWriteMB int `mapstructure:"max_fs_write_mb"`
+
+	// DockerImage is the image used by the hardened Docker/container runner
+	// (sandbox.mode: docker). It must contain the language runtime the code
+	// targets. Only used when the docker runner is selected.
+	DockerImage string `mapstructure:"docker_image"`
 }
 
 // OutputConfig controls how scan results are displayed and stored.
@@ -78,6 +86,23 @@ type AuditConfig struct {
 	StorePrompts       bool `mapstructure:"store_prompts"`        // default true
 	StoreGeneratedCode bool `mapstructure:"store_generated_code"` // default true
 	RedactSecrets      bool `mapstructure:"redact_secrets"`       // default true — redact before writing
+
+	// RetentionDays prunes audit rows older than the given number of days when
+	// the database is opened. 0 keeps records forever.
+	RetentionDays int `mapstructure:"retention_days"`
+	// MaxRecords caps the number of retained audit rows; the oldest rows are
+	// pruned to stay within the cap. 0 = unlimited.
+	MaxRecords int `mapstructure:"max_records"`
+	// Encrypt enables at-rest encryption of the stored report blob using
+	// AES-256-GCM. The key is read from the environment variable named by
+	// EncryptionKeyEnv. Encryption without a usable key fails closed.
+	Encrypt bool `mapstructure:"encrypt"`
+	// EncryptionKeyEnv names the environment variable holding the encryption
+	// key (raw text or 64 hex characters for a 32-byte key).
+	EncryptionKeyEnv string `mapstructure:"encryption_key_env"`
+
+	// Export optionally ships saved reports to a centralized audit endpoint.
+	Export AuditExportTarget `mapstructure:"export"`
 }
 
 // LoggerConfig mirrors the logger package's config for structured logging.
@@ -270,10 +295,24 @@ func Load(cfgFile string) (*Config, error) {
 	v.SetDefault("audit.store_prompts", true)
 	v.SetDefault("audit.store_generated_code", true)
 	v.SetDefault("audit.redact_secrets", true)
+	v.SetDefault("audit.retention_days", 0)
+	v.SetDefault("audit.max_records", 0)
+	v.SetDefault("audit.encrypt", false)
+	v.SetDefault("audit.encryption_key_env", "ELEVATED_CLI_AUDIT_KEY")
+	v.SetDefault("audit.export.enabled", false)
+	v.SetDefault("audit.export.endpoint", "")
+	v.SetDefault("audit.export.token_env", "")
 	v.SetDefault("logger.level", "info")
 	v.SetDefault("logger.format", "console")
 	v.SetDefault("logger.file", "")
+	v.SetDefault("policy.version", SupportedPolicyVersion)
 	v.SetDefault("policy.file", ".elevated-cli.yaml")
+	v.SetDefault("policy.default_action", "block")
+	v.SetDefault("metrics.enabled", false)
+	v.SetDefault("metrics.format", "prometheus")
+	v.SetDefault("sbom.format", "cyclonedx")
+	v.SetDefault("sbom.output", "-")
+	v.SetDefault("sandbox.docker_image", "alpine:3.20")
 
 	// Security scoring defaults — the formula and fail-closed behaviour are
 	// part of the documented security contract, so they must never silently
@@ -352,5 +391,30 @@ func Load(cfgFile string) (*Config, error) {
 		cfg.Database.Path = filepath.Join(".", cfg.Database.Path)
 	}
 
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
+
 	return &cfg, nil
+}
+
+// validate rejects configuration that would silently change security semantics,
+// such as an unknown policy schema version or an unrecognised policy action.
+func (c *Config) validate() error {
+	if v := strings.TrimSpace(c.Policy.Version); v != "" && v != SupportedPolicyVersion {
+		return fmt.Errorf("unsupported policy version %q: this build supports version %s",
+			v, SupportedPolicyVersion)
+	}
+	if a := strings.ToLower(strings.TrimSpace(c.Policy.DefaultAction)); a != "" &&
+		a != "block" && a != "warn" {
+		return fmt.Errorf("invalid policy.default_action %q: must be \"block\" or \"warn\"", a)
+	}
+	for rule, a := range c.Policy.RuleActions {
+		switch strings.ToLower(strings.TrimSpace(a)) {
+		case "", "block", "warn":
+		default:
+			return fmt.Errorf("invalid action %q for policy rule %s: must be \"block\" or \"warn\"", a, rule)
+		}
+	}
+	return nil
 }

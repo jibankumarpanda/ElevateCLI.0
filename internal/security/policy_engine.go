@@ -27,6 +27,76 @@ func NewPolicyEngine(cfg config.PolicyConfig) *PolicyEngineImpl {
 	return &PolicyEngineImpl{cfg: cfg}
 }
 
+// Default severities applied to each built-in violation rule when the operator
+// has not overridden them via policy.rule_severities.
+var defaultRuleSeverity = map[string]sec.Severity{
+	"BLOCKED_IMPORT":   sec.SeverityHigh,
+	"BLOCKED_FUNCTION": sec.SeverityHigh,
+	"UNHANDLED_ERROR":  sec.SeverityMedium,
+	"HIGH_COMPLEXITY":  sec.SeverityLow,
+}
+
+// actionFor resolves the configured action for a violation rule. An explicit
+// policy.rule_actions entry wins; otherwise policy.default_action applies; an
+// empty default falls back to "block" so an unconfigured rule fails safe.
+func (e *PolicyEngineImpl) actionFor(rule string) string {
+	if a, ok := e.cfg.RuleActions[rule]; ok {
+		if a = strings.ToLower(strings.TrimSpace(a)); a == "warn" || a == "block" {
+			return a
+		}
+	}
+	if a := strings.ToLower(strings.TrimSpace(e.cfg.DefaultAction)); a == "warn" || a == "block" {
+		return a
+	}
+	return sec.PolicyActionBlock
+}
+
+// severityFor resolves the configured severity for a violation rule, falling
+// back to the rule's built-in default and then to MEDIUM.
+func (e *PolicyEngineImpl) severityFor(rule string) sec.Severity {
+	if s, ok := e.cfg.RuleSeverities[rule]; ok {
+		if sev := parseSeverity(s); sev != "" {
+			return sev
+		}
+	}
+	if sev, ok := defaultRuleSeverity[rule]; ok {
+		return sev
+	}
+	return sec.SeverityMedium
+}
+
+// violation constructs a PolicyViolation with the resolved action and severity.
+func (e *PolicyEngineImpl) violation(rule, description, file string, line int, value string) sec.PolicyViolation {
+	return sec.PolicyViolation{
+		Rule:        rule,
+		Description: description,
+		File:        file,
+		Line:        line,
+		Value:       value,
+		Severity:    e.severityFor(rule),
+		Action:      e.actionFor(rule),
+	}
+}
+
+// parseSeverity maps a configured severity string to a sec.Severity, returning
+// "" for an unrecognised value.
+func parseSeverity(s string) sec.Severity {
+	switch strings.ToUpper(strings.TrimSpace(s)) {
+	case "CRITICAL":
+		return sec.SeverityCritical
+	case "HIGH":
+		return sec.SeverityHigh
+	case "MEDIUM":
+		return sec.SeverityMedium
+	case "LOW":
+		return sec.SeverityLow
+	case "INFO":
+		return sec.SeverityInfo
+	default:
+		return ""
+	}
+}
+
 // Check runs all configured policy rules against the generated code.
 func (e *PolicyEngineImpl) Check(ctx context.Context, code, language string) ([]sec.PolicyViolation, error) {
 	log := logger.WithStage("policy")
@@ -71,13 +141,13 @@ func (e *PolicyEngineImpl) checkGo(code string) ([]sec.PolicyViolation, error) {
 			importPath := strings.Trim(node.Path.Value, `"`)
 			for _, blocked := range e.cfg.Rules.BlockedImports {
 				if importPath == blocked || strings.HasPrefix(importPath, blocked+"/") {
-					violations = append(violations, sec.PolicyViolation{
-						Rule:        "BLOCKED_IMPORT",
-						Description: fmt.Sprintf("Import of '%s' is blocked by security policy.", importPath),
-						File:        "generated_code.go",
-						Line:        fset.Position(node.Pos()).Line,
-						Value:       importPath,
-					})
+					violations = append(violations, e.violation(
+						"BLOCKED_IMPORT",
+						fmt.Sprintf("Import of '%s' is blocked by security policy.", importPath),
+						"generated_code.go",
+						fset.Position(node.Pos()).Line,
+						importPath,
+					))
 				}
 			}
 
@@ -93,13 +163,13 @@ func (e *PolicyEngineImpl) checkGo(code string) ([]sec.PolicyViolation, error) {
 				if strings.EqualFold(callName, blocked) ||
 					strings.EqualFold(qualified, blocked) ||
 					strings.HasPrefix(lowerQualified, strings.ToLower(blocked)+".") {
-					violations = append(violations, sec.PolicyViolation{
-						Rule:        "BLOCKED_FUNCTION",
-						Description: fmt.Sprintf("Call to '%s()' is blocked by security policy.", blocked),
-						File:        "generated_code.go",
-						Line:        fset.Position(node.Pos()).Line,
-						Value:       callName,
-					})
+					violations = append(violations, e.violation(
+						"BLOCKED_FUNCTION",
+						fmt.Sprintf("Call to '%s()' is blocked by security policy.", blocked),
+						"generated_code.go",
+						fset.Position(node.Pos()).Line,
+						callName,
+					))
 					break
 				}
 			}
@@ -117,13 +187,13 @@ func (e *PolicyEngineImpl) checkGo(code string) ([]sec.PolicyViolation, error) {
 						if ident.Name == "_" {
 							// Blank identifier for an error — check if it's an error type
 							// This is a heuristic; full type-checking requires go/types
-							violations = append(violations, sec.PolicyViolation{
-								Rule:        "UNHANDLED_ERROR",
-								Description: "Error return value is discarded with blank identifier '_'. Always handle errors.",
-								File:        "generated_code.go",
-								Line:        fset.Position(node.Pos()).Line,
-								Value:       "_",
-							})
+							violations = append(violations, e.violation(
+								"UNHANDLED_ERROR",
+								"Error return value is discarded with blank identifier '_'. Always handle errors.",
+								"generated_code.go",
+								fset.Position(node.Pos()).Line,
+								"_",
+							))
 						}
 					}
 				}
@@ -166,15 +236,15 @@ func (e *PolicyEngineImpl) checkCyclomaticComplexity(fset *token.FileSet, f *ast
 		// Keep it simple and count every FuncDecl, matching gocyclo.
 		complexity := cyclomaticComplexity(fn.Body)
 		if complexity > limit {
-			violations = append(violations, sec.PolicyViolation{
-				Rule: "HIGH_COMPLEXITY",
-				Description: fmt.Sprintf(
+			violations = append(violations, e.violation(
+				"HIGH_COMPLEXITY",
+				fmt.Sprintf(
 					"Function '%s' has cyclomatic complexity %d, exceeding the configured limit of %d.",
 					fn.Name.Name, complexity, limit),
-				File:  "generated_code.go",
-				Line:  fset.Position(fn.Pos()).Line,
-				Value: fmt.Sprintf("%d", complexity),
-			})
+				"generated_code.go",
+				fset.Position(fn.Pos()).Line,
+				fmt.Sprintf("%d", complexity),
+			))
 		}
 	}
 	return violations
@@ -233,26 +303,26 @@ func (e *PolicyEngineImpl) checkGeneric(code, language string) []sec.PolicyViola
 		// Check blocked imports/requires
 		for _, blocked := range e.cfg.Rules.BlockedImports {
 			if strings.Contains(line, blocked) {
-				violations = append(violations, sec.PolicyViolation{
-					Rule:        "BLOCKED_IMPORT",
-					Description: fmt.Sprintf("Import of '%s' is blocked by security policy.", blocked),
-					File:        fmt.Sprintf("generated_code.%s", langExt(language)),
-					Line:        lineNum + 1,
-					Value:       blocked,
-				})
+				violations = append(violations, e.violation(
+					"BLOCKED_IMPORT",
+					fmt.Sprintf("Import of '%s' is blocked by security policy.", blocked),
+					fmt.Sprintf("generated_code.%s", langExt(language)),
+					lineNum+1,
+					blocked,
+				))
 			}
 		}
 
 		// Check blocked function calls
 		for _, blocked := range e.cfg.Rules.BlockedFunctions {
 			if strings.Contains(line, blocked+"(") {
-				violations = append(violations, sec.PolicyViolation{
-					Rule:        "BLOCKED_FUNCTION",
-					Description: fmt.Sprintf("Call to '%s()' is blocked by security policy.", blocked),
-					File:        fmt.Sprintf("generated_code.%s", langExt(language)),
-					Line:        lineNum + 1,
-					Value:       blocked,
-				})
+				violations = append(violations, e.violation(
+					"BLOCKED_FUNCTION",
+					fmt.Sprintf("Call to '%s()' is blocked by security policy.", blocked),
+					fmt.Sprintf("generated_code.%s", langExt(language)),
+					lineNum+1,
+					blocked,
+				))
 			}
 		}
 	}

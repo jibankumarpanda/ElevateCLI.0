@@ -104,14 +104,15 @@ func (c *Calculator) Compute(
 	final = clamp(final, 0, 100)
 
 	hasCritical := hasCriticalFindings(findings) || hasCriticalVulns(vulns)
+	hasBlockingPolicy := hasBlockingViolations(violations)
 
-	verdict := c.verdict(final, sandbox, hasCritical, analysisComplete)
+	verdict := c.verdict(final, sandbox, hasCritical, hasBlockingPolicy, analysisComplete)
 	return stages, final, verdict
 }
 
 // verdict implements the fail-closed decision order. Hard conditions are
 // evaluated first and cannot be overridden by a high numeric score.
-func (c *Calculator) verdict(final int, sandbox sec.SandboxResult, hasCritical, analysisComplete bool) sec.Verdict {
+func (c *Calculator) verdict(final int, sandbox sec.SandboxResult, hasCritical, hasBlockingPolicy, analysisComplete bool) sec.Verdict {
 	// 1. The sandbox attempted to run the code and the run failed. This is a
 	//    hard stop: execution was attempted, so the code demonstrably failed
 	//    at runtime, regardless of the static score.
@@ -134,8 +135,10 @@ func (c *Calculator) verdict(final int, sandbox sec.SandboxResult, hasCritical, 
 
 	// 3. A critical finding or critical vulnerability is present. BLOCKED is a
 	//    hard stop and overrides the numeric score: one CRITICAL issue is not
-	//    cancelled out by clean results in other stages.
-	if hasCritical {
+	//    cancelled out by clean results in other stages. A policy rule whose
+	//    action is "block" is equally authoritative — a high score can never
+	//    override an explicitly blocking policy violation.
+	if hasCritical || hasBlockingPolicy {
 		return sec.VerdictBlocked
 	}
 
@@ -211,6 +214,17 @@ func hasCriticalFindings(findings []sec.Finding) bool {
 func hasCriticalVulns(vulns []sec.Vulnerability) bool {
 	for _, v := range vulns {
 		if v.Severity == sec.SeverityCritical {
+			return true
+		}
+	}
+	return false
+}
+
+// hasBlockingViolations reports whether any policy violation is configured to
+// block. Only an explicit block action counts (see PolicyViolation.IsBlocking).
+func hasBlockingViolations(violations []sec.PolicyViolation) bool {
+	for _, v := range violations {
+		if v.IsBlocking() {
 			return true
 		}
 	}
