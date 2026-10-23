@@ -3,6 +3,8 @@ package sandbox
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -117,6 +119,35 @@ func TestDockerSuccess(t *testing.T) {
 	}
 	if !res.Executed || !res.Success || res.Stdout != "hello from sandbox" || res.Mode != "docker" {
 		t.Fatalf("unexpected result: %+v", res)
+	}
+}
+
+func TestDockerMountedFilesAreReadableByContainerUser(t *testing.T) {
+	origProbe, origExec := probeDocker, dockerExec
+	probeDocker = func() (bool, error) { return true, nil }
+	var dirMode, fileMode os.FileMode
+	dockerExec = func(_ context.Context, dir string, _ []string, _ int) (string, string, int, error) {
+		di, err := os.Stat(dir)
+		if err != nil {
+			return "", "", -1, err
+		}
+		fi, err := os.Stat(filepath.Join(dir, "main.py"))
+		if err != nil {
+			return "", "", -1, err
+		}
+		dirMode, fileMode = di.Mode().Perm(), fi.Mode().Perm()
+		return "ok", "", 0, nil
+	}
+	defer func() { probeDocker, dockerExec = origProbe, origExec }()
+
+	if _, err := newTestDockerRunner().Run(context.Background(), "print(1)", "python"); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if dirMode != 0o755 {
+		t.Errorf("sandbox dir mode = %o, want 755 so the container user can traverse it", dirMode)
+	}
+	if fileMode != 0o644 {
+		t.Errorf("code file mode = %o, want 644 so the container user can read it", fileMode)
 	}
 }
 

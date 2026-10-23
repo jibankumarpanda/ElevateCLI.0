@@ -235,6 +235,16 @@ func (d *DockerRunner) Run(ctx context.Context, code, language string) (sec.Sand
 	if err != nil {
 		return sec.SandboxResult{}, err
 	}
+	// The container runs as an unprivileged UID that does not own the
+	// bind-mounted files. The random temp directory is created 0700 and the
+	// code file 0600, which the container user cannot read, so relax only the
+	// browse/read bits for the lifetime of this run.
+	if err := os.Chmod(workDir, 0o755); err != nil {
+		return sec.SandboxResult{}, fmt.Errorf("making sandbox dir traversable: %w", err)
+	}
+	if err := os.Chmod(codeFile, 0o644); err != nil {
+		return sec.SandboxResult{}, fmt.Errorf("making sandbox code readable: %w", err)
+	}
 	// Address the mounted file by its real basename to keep guest argv exact.
 	guest[len(guest)-1] = "/work/" + filepath.Base(codeFile)
 
