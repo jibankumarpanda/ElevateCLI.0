@@ -278,21 +278,3 @@ func (n *noopSandbox) Run(_ context.Context, code, language string) (sec.Sandbox
 		Mode:       "none",
 	}, nil
 }
-
-// unavailableSandbox satisfies the SandboxRunner interface but always fails.
-// Used when a sandbox mode is configured that has no implemented runner
-// (currently "docker"). The pipeline treats the error as incomplete analysis
-// under fail-closed mode, so a missing runtime is never reported as a clean
-// or executed run.
-type unavailableSandbox struct {
-	reason string
-}
-
-func (u *unavailableSandbox) Run(_ context.Context, code, language string) (sec.SandboxResult, error) {
-	return sec.SandboxResult{
-		Executed:   false,
-		Skipped:    false,
-		SkipReason: u.reason,
-		Mode:       "unavailable",
-	}, fmt.Errorf("%s", u.reason)
-}

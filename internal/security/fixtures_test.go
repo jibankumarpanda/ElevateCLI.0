@@ -36,7 +36,6 @@ func TestFixtureCorpus(t *testing.T) {
 	}
 
 	for rel, want := range expectations {
-		rel, want := rel, want
 		t.Run(rel, func(t *testing.T) {
 			code, err := os.ReadFile(filepath.Join(root, "code_samples", rel))
 			if err != nil {
