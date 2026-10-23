@@ -268,7 +268,7 @@ go install github.com/google/osv-scanner/cmd/osv-scanner@latest
 
 ### Hardened Sandbox Runtimes
 
-`gVisor` is the implemented hardened runtime (Linux): `sandbox.mode: gvisor` runs generated code inside a gVisor sandbox driven by `runsc do`.
+`gVisor` and `Docker` are the implemented hardened runtimes. gVisor is Linux-only (`sandbox.mode: gvisor`, driven by `runsc do`); Docker works wherever a Docker daemon is available (`sandbox.mode: docker`). Firecracker orchestration is planned for v0.1.2 and fails closed today.
 
 - **gVisor** provides a user-space kernel — every syscall from the sandboxed process is intercepted by the sentry, so there is no kernel escape and no host write, with network isolation and a read-only host view behind an in-memory overlay. Runs rootless (unprivileged user namespaces); see [Platform Support](#platform-support) for the confidentiality caveat and the `ELEVATED_CLI_RUNSC_ROOTFS` tightening option.
 - **Docker** (`sandbox.mode: docker`) runs the target inside a hardened container: read-only root filesystem, a small tmpfs for `/tmp`, all capabilities dropped, `no-new-privileges`, a non-root UID, the network disabled, and memory/CPU/PID limits. The Docker daemon is probed first and the run fails closed if it is unavailable or the image cannot be used.
@@ -288,6 +288,27 @@ rm gvisor.tar.bz2
 ```
 
 `runsc` must remain next to its `gvisor-bin/` sidecar directory. There is no fallback: if `sandbox.mode: gvisor` is selected and the boundary cannot be provided, ElevateCLI fails closed and reports `ANALYSIS_INCOMPLETE` rather than running on the host.
+
+#### Docker quick start
+
+Docker is the cross-platform hardened option. It needs a running Docker daemon; the per-language image is pulled on first use.
+
+```yaml
+sandbox:
+  mode: docker
+  block_network: true
+  max_memory_mb: 512
+  max_nproc: 128
+```
+
+```bash
+# python | javascript | go images are selected automatically
+elevated-cli generate --prompt "Read a CSV and print the row count" --lang python --run --sandbox docker
+```
+
+Set `sandbox.docker_image` to override the default image for a custom runtime.
+
+Default images: `golang:1.25-alpine`, `python:3.12-alpine`, and `node:20-alpine`. The container runs as a non-root UID with a read-only root, a tmpfs `/tmp`, all capabilities dropped, `no-new-privileges`, network disabled when `block_network: true`, and memory/CPU/PID limits. If Docker is unavailable, the image cannot be pulled, or the container fails to start (exit code 125), the run fails closed as `ANALYSIS_INCOMPLETE`/`EXECUTION_FAILED`; it never falls back to the host process runner. Verify a host with `make test-docker`.
 
 ---
 
@@ -388,7 +409,7 @@ elevated-cli generate \
   --run
 ```
 
-> `--run` may execute code through the current host process runner. Use it only for code you are willing to run in a controlled local-development environment. It is not suitable for hostile or unknown code.
+> `--run` executes through the configured `sandbox.mode`. The default `process` runner is only for code you are willing to run in a controlled local-development environment and is not suitable for hostile or unknown code. Use `--sandbox docker` (or `gvisor` on Linux) for a hardened boundary.
 
 ### 4. Audit Existing Code
 
@@ -442,7 +463,7 @@ elevated-cli generate --prompt "..." --lang go
 | `-p, --prompt` | Natural-language request for code generation; required |
 | `-l, --lang` | `go`, `python`, `javascript`, or `typescript`; default `go` |
 | `-m, --model` | Override the configured LLM model |
-| `--sandbox` | Requested mode: `firecracker`, `process`, or `docker` |
+| `--sandbox` | Requested mode: `gvisor`, `docker`, `process`, or `firecracker` (Firecracker fails closed until v0.1.2) |
 | `--run` | Request controlled execution after verification |
 | `--fix` | **Experimental.** Apply rule-driven mechanical repairs (blocked-import removal, error-handling rewrap, secret redaction, complexity reduction) and re-verify until green or `BLOCKED` |
 | `--fix-semantic` | **Experimental.** Let the LLM propose a patch for semantic findings; the full pipeline re-verifies that patch, and the diff requires human review before merge |
@@ -1158,11 +1179,11 @@ Prebuilt release binaries are published for all three platforms on `v*` tags via
 | macOS | amd64, arm64 | `elevated-cli` | `GOOS=darwin go build ./...` |
 | Windows | amd64 | `elevated-cli.exe` | `GOOS=windows go build ./...` |
 
-| Platform | CLI & analysis | Process runner | gVisor (`runsc`) | Hard limits (`prlimit`) | Network isolation (`unshare`) | Firecracker |
-|---|---:|---:|---:|---:|---:|---:|
-| Linux | Supported | Available | Enforced, fails closed | Enforced, fails closed | Enforced, fails closed | Planned |
-| macOS | Supported | Available | Not supported | Fails closed (not enforceable) | Fails closed (not enforceable) | Not supported |
-| Windows | Supported | Available | Not supported | Fails closed (not enforceable) | Fails closed (not enforceable) | Not supported |
+| Platform | CLI & analysis | Process runner | Docker (daemon required) | gVisor (`runsc`) | Hard limits (`prlimit`) | Network isolation (`unshare`) | Firecracker |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Linux | Supported | Available | Available, fails closed | Enforced, fails closed | Enforced, fails closed | Enforced, fails closed | Planned (v0.1.2) |
+| macOS | Supported | Available | Available, fails closed | Not supported | Fails closed (not enforceable) | Fails closed (not enforceable) | Not supported |
+| Windows | Supported | Available | Available, fails closed | Not supported | Fails closed (not enforceable) | Fails closed (not enforceable) | Not supported |
 
 > Fail-closed enforcement is platform-dependent. The hard limits (`max_memory_mb` via `prlimit --as`, `max_cpu_seconds` via `--cpu`, `max_nproc` via `--nproc`, `max_fs_write_mb` via `--fsize`) and network isolation (`block_network` via `unshare -U -n`) are enforced only on Linux. On macOS and Windows a configured-but-unenforceable control never runs silently with a missing cap: execution **fails closed** and the run is reported `ANALYSIS_INCOMPLETE`. Because the default config sets `max_memory_mb: 256` and `block_network: true`, sandbox execution on macOS/Windows requires explicitly disabling the unenforceable controls:
 
@@ -1423,9 +1444,9 @@ Before a release should be considered secure enough for broader internal testing
 
 ### P2 — Production Hardening
 
-- [ ] Firecracker microVM orchestration (fail-closed stub only; `sandbox.mode: firecracker` refuses to fall back to host execution)
+- [ ] Firecracker microVM orchestration, targeted for v0.1.2 (fail-closed stub only; `sandbox.mode: firecracker` refuses to fall back to host execution)
 - [x] gVisor runtime support
-- [x] Hardened Docker/container profile (`sandbox.mode: docker` via `internal/sandbox/docker_runner.go`: read-only root, tmpfs `/tmp`, dropped capabilities, `no-new-privileges`, non-root user, network disabled, memory/CPU/PID limits, fail-closed probe)
+- [x] Hardened Docker/container profile (`sandbox.mode: docker` via `internal/sandbox/docker_runner.go`: read-only root, executable tmpfs `/tmp`, dropped capabilities, `no-new-privileges`, non-root user, network disabled, memory/CPU/PID limits, fail-closed probe, opt-in `make test-docker` integration coverage)
 - [x] SBOM generation (`elevated-cli sbom` emits CycloneDX or SPDX from the module graph and build info; `SOURCE_DATE_EPOCH`-aware)
 - [x] Signed binaries (GoReleaser emits checksums and signs them with cosign keyless signing)
 - [x] Reproducible builds (`-trimpath`, `-buildid=`, `-buildvcs` VCS stamp, `SOURCE_DATE_EPOCH`-derived `main.Date`, `mod_timestamp`)

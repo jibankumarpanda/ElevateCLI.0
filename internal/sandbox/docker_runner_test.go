@@ -37,6 +37,7 @@ func TestDockerRunArgsContainment(t *testing.T) {
 
 	mustContain := [][]string{
 		{"--read-only"},
+		{"--tmpfs", "/tmp:rw,exec,size=64m,mode=1777"},
 		{"--network", "none"},
 		{"--cap-drop", "ALL"},
 		{"--security-opt", "no-new-privileges"},

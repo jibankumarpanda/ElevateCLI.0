@@ -1,3 +1,5 @@
+//go:build integration
+
 package sandbox
 
 import (
@@ -6,7 +8,12 @@ import (
 	"testing"
 )
 
-func TestDockerLiveTmp(t *testing.T) {
+// These tests exercise a real Docker daemon and are opt-in:
+//
+//	make test-docker
+//
+// They pull the default per-language images on first run.
+func TestDockerIntegration(t *testing.T) {
 	cases := []struct {
 		name, lang, code, want string
 	}{
@@ -16,39 +23,33 @@ func TestDockerLiveTmp(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			d := NewDockerRunner(120, 512, true, ResourceLimits{MaxOutputKB: 64}, "")
-			res, err := d.Run(context.Background(), tc.code, tc.lang)
-			t.Logf("result=%+v err=%v", res, err)
+			res, err := NewDockerRunner(120, 512, true, ResourceLimits{MaxOutputKB: 64}, "").Run(context.Background(), tc.code, tc.lang)
 			if err != nil {
-				t.Fatalf("docker run failed: %v", err)
+				t.Fatalf("Run: %v", err)
 			}
 			if !res.Success || !strings.Contains(res.Stdout, tc.want) {
-				t.Fatalf("unexpected result: %+v", res)
+				t.Fatalf("expected %q in stdout, got %+v", tc.want, res)
 			}
 		})
 	}
 }
 
-func TestDockerLiveNetworkBlockedTmp(t *testing.T) {
-	d := NewDockerRunner(60, 128, true, ResourceLimits{MaxOutputKB: 64}, "python:3.12-alpine")
+func TestDockerIntegrationNetworkBlocked(t *testing.T) {
 	code := "import urllib.request\nurllib.request.urlopen('https://example.com', timeout=3)\nprint('network reached')"
-	res, err := d.Run(context.Background(), code, "python")
-	t.Logf("result=%+v err=%v", res, err)
+	res, err := NewDockerRunner(60, 128, true, ResourceLimits{MaxOutputKB: 64}, "python:3.12-alpine").Run(context.Background(), code, "python")
 	if err != nil {
-		t.Fatalf("docker run failed: %v", err)
+		t.Fatalf("Run: %v", err)
 	}
 	if res.Success {
 		t.Fatalf("network should be blocked, got success: %+v", res)
 	}
 }
 
-func TestDockerLiveReadOnlyRootTmp(t *testing.T) {
-	d := NewDockerRunner(60, 128, true, ResourceLimits{MaxOutputKB: 64}, "python:3.12-alpine")
+func TestDockerIntegrationReadOnlyRoot(t *testing.T) {
 	code := "open('/etc/should-fail', 'w').write('x')\nprint('wrote rootfs')"
-	res, err := d.Run(context.Background(), code, "python")
-	t.Logf("result=%+v err=%v", res, err)
+	res, err := NewDockerRunner(60, 128, true, ResourceLimits{MaxOutputKB: 64}, "python:3.12-alpine").Run(context.Background(), code, "python")
 	if err != nil {
-		t.Fatalf("docker run failed: %v", err)
+		t.Fatalf("Run: %v", err)
 	}
 	if res.Success {
 		t.Fatalf("root filesystem should be read-only, got success: %+v", res)

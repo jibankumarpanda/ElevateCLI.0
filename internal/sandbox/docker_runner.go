@@ -174,7 +174,7 @@ func (d *DockerRunner) buildRunArgs(workDir, image string, guest []string) []str
 	argv := []string{
 		dockerBinary(), "run", "--rm", "--init",
 		"--read-only",
-		"--tmpfs", "/tmp:rw,size=64m,mode=1777",
+		"--tmpfs", "/tmp:rw,exec,size=64m,mode=1777",
 		"--cap-drop", "ALL",
 		"--security-opt", "no-new-privileges",
 		"--user", "65534:65534",

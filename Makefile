@@ -11,7 +11,7 @@ SOURCE_DATE_EPOCH ?= $(shell git log -1 --format=%ct 2>/dev/null || echo 0)
 BUILD_DATE ?= $(shell date -u -d @$(SOURCE_DATE_EPOCH) +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
 BUILD_LDFLAGS=-s -w -X main.Version=$(VERSION) -X main.Commit=$(COMMIT) -X main.Date=$(BUILD_DATE) -buildid=
 
-.PHONY: build run test lint clean install fmt vet cross build-release
+.PHONY: build run test test-docker lint clean install fmt vet cross build-release
 
 # Build single binary (reproducible: -trimpath strips host paths)
 build:
@@ -28,6 +28,10 @@ run:
 # Run tests
 test:
 	go test ./... -race -count=1 -v
+
+# Exercise sandbox.mode: docker against a real Docker daemon (pulls images)
+test-docker:
+	go test -tags=integration ./internal/sandbox -run 'TestDockerIntegration' -v -count=1
 
 # Run tests with coverage
 test-coverage:
