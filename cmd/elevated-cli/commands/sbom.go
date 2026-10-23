@@ -60,7 +60,10 @@ attached to a release and diffed across builds.`,
 				fmt.Fprint(cmd.OutOrStdout(), string(doc))
 				return nil
 			}
-			if err := os.WriteFile(output, doc, 0o644); err != nil {
+			// #nosec G703,G306 -- output is an operator-supplied path (from the
+			// CLI or config); writing the SBOM there is the feature, and the
+			// file is created with owner-only permissions.
+			if err := os.WriteFile(output, doc, 0o600); err != nil {
 				return fmt.Errorf("writing SBOM to %s: %w", output, err)
 			}
 			fmt.Fprintf(cmd.ErrOrStderr(), "wrote %s SBOM (%d components) to %s\n", format, len(components), output)

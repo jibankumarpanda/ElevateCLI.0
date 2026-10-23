@@ -85,6 +85,9 @@ var probeDocker = func() (bool, error) {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+		// #nosec G204 -- bin is either the constant "docker" or the
+		// operator-set ELEVATED_CLI_DOCKER_BINARY path; it is not tainted by
+		// generated code and the remaining arguments are fixed.
 		if _, err := exec.CommandContext(ctx, bin, "version", "--format", "{{.Server.Version}}").CombinedOutput(); err != nil {
 			dockerProbeErr = err
 			return
@@ -97,6 +100,9 @@ var probeDocker = func() (bool, error) {
 // dockerExec runs the docker command and captures bounded output. It is a var so
 // tests can exercise Run without a docker daemon.
 var dockerExec = func(ctx context.Context, dir string, argv []string, maxOutputKB int) (stdout, stderr string, exitCode int, err error) {
+	// #nosec G204 -- argv is assembled from the fixed docker CLI flags in this
+	// package plus the read-only bind mount; generated code is written to a
+	// file and never interpolated into command arguments.
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = dir
 	out := newCappedOutput(maxOutputKB * 1024)
